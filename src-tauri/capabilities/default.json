@@ -2,10 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-set-fullscreen",
+    "core:window:allow-set-title",
     "core:window:allow-is-fullscreen",
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-size",
@@ -24,6 +27,12 @@
     "window-state:default",
     "os:default",
     "log:default",
-    "libmpv:default"
+    "libmpv:default",
+    "core:window:allow-set-min-size",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-current-monitor",
+    "core:window:allow-show"
   ]
 }

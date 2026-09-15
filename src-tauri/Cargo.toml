@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "MovieBox - watch and download movies and series"
 authors = ["MovieBox"]
 edition = "2021"
+default-run = "moviebox"
 
 [lib]
 name = "moviebox_lib"
