@@ -478,11 +478,14 @@ export function PlayerPage() {
     endedToken.current = attempt.current.token;
     const L = live.current;
     if (sleepRef.current?.kind === "episode") {
+      mpv.set("pause", true).catch(() => {});
+      setUpNext(null);
+      setUpNextDismissed(true);
       setSleep(null);
       setSleepDone(true);
       return;
     }
-    if (nextRef.current && autoplayRef.current && !dismissRef.current) {
+    if (nextRef.current && autoplayRef.current && !dismissRef.current && !sleepDoneRef.current) {
       goToRef.current(nextRef.current, 0);
     } else if (L.duration > 0) {
       setControls(true);
@@ -496,6 +499,8 @@ export function PlayerPage() {
   autoplayRef.current = settings?.autoplayNext ?? true;
   const dismissRef = useRef(upNextDismissed);
   dismissRef.current = upNextDismissed;
+  const sleepDoneRef = useRef(sleepDone);
+  sleepDoneRef.current = sleepDone;
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const endedToken = useRef(-1);
@@ -505,9 +510,9 @@ export function PlayerPage() {
   failRef.current = handleFailure;
 
   useEffect(() => {
-    if (phase !== "playing" || !next || !settings?.autoplayNext || upNextDismissed || sleep?.kind === "episode") return;
+    if (phase !== "playing" || !next || !settings?.autoplayNext || upNextDismissed || sleepDone || sleep?.kind === "episode") return;
     if (duration > 60 && duration - pos <= 12 && upNext === null && !paused) setUpNext(10);
-  }, [pos, duration, phase, next, settings, upNextDismissed, upNext, paused, sleep]);
+  }, [pos, duration, phase, next, settings, upNextDismissed, upNext, paused, sleep, sleepDone]);
 
   useEffect(() => {
     if (upNext === null) return;
@@ -525,6 +530,8 @@ export function PlayerPage() {
     const t = window.setInterval(() => {
       if (Date.now() >= sleep.at) {
         mpv.set("pause", true).catch(() => {});
+        setUpNext(null);
+        setUpNextDismissed(true);
         setSleep(null);
         setSleepDone(true);
       }
