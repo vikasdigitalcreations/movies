@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MovieBox – Getting Started</title>
+<style>
+  :root { --red:#e50914; --ink:#0f0f14; --panel:#1a1a22; --muted:#a0a0ad; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI", system-ui, sans-serif; background:var(--ink); color:#f2f2f5; line-height:1.55; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 60px; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom: 8px; }
+  .logo { width:52px; height:52px; border-radius:14px; background:linear-gradient(135deg,#ff3d47,#a0000a); display:flex; align-items:center; justify-content:center; }
+  .logo svg { width:26px; height:26px; }
+  h1 { font-size: 34px; margin: 0; }
+  .lead { color: var(--muted); font-size: 18px; margin: 4px 0 32px; }
+  .card { background: var(--panel); border: 1px solid #2a2a35; border-radius: 18px; padding: 26px 28px; margin-bottom: 22px; }
+  .step { display:flex; gap:18px; }
+  .num { flex:0 0 42px; height:42px; border-radius:50%; background:var(--red); font-weight:800; font-size:20px; display:flex; align-items:center; justify-content:center; }
+  h2 { margin: 4px 0 8px; font-size: 22px; }
+  p { margin: 6px 0; font-size: 17px; }
+  .muted { color: var(--muted); }
+  kbd { background:#2c2c38; border-radius:6px; padding:1px 7px; font-family: Consolas, monospace; font-size: 15px; }
+  /* recreation of the Windows SmartScreen dialog */
+  .smart { margin: 18px 0 6px; background:#0063b1; color:#fff; border-radius:4px; padding: 26px 30px 22px; font-family:"Segoe UI", sans-serif; max-width: 560px; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  .smart h3 { font-weight: 300; font-size: 30px; margin: 0 0 14px; }
+  .smart p { font-size: 15px; margin: 0 0 12px; }
+  .smart .more { text-decoration: underline; font-size: 15px; display:inline-block; padding: 2px 4px; outline: 3px solid #ffd400; outline-offset: 2px; border-radius: 2px; }
+  .smart .details { margin-top: 12px; font-size: 14px; opacity: .95; }
+  .smart .buttons { display:flex; justify-content:flex-end; gap:10px; margin-top: 22px; }
+  .smart .btn { border: 2px solid rgba(255,255,255,.85); padding: 6px 22px; font-size: 15px; }
+  .smart .btn.run { outline: 3px solid #ffd400; outline-offset: 2px; }
+  .smart .tag { position:absolute; right:-12px; top:-12px; background:#ffd400; color:#000; font-weight:700; font-size:13px; padding: 3px 10px; border-radius: 99px; }
+  .arrow { color:#ffd400; font-weight:700; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 10px; }
+  .tip { background:#22222c; border-radius: 14px; padding: 16px 18px; }
+  .tip b { display:block; margin-bottom: 4px; }
+  footer { color: var(--muted); font-size: 14px; margin-top: 30px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M7 4.5v15l12.5-7.5z"/></svg></div>
+    <h1>Welcome to MovieBox</h1>
+  </header>
+  <p class="lead">Watch and download movies and series. Nothing else to install. Here's everything you need in three steps.</p>
+
+  <div class="card">
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h2>If Windows shows a blue "Windows protected your PC" box</h2>
+        <p>This appears the first time because MovieBox isn't sold in a store. It's safe to continue:</p>
+        <p>Click <span class="arrow">More info</span>, then click <span class="arrow">Run anyway</span>. You only do this once.</p>
+        <div class="smart" aria-label="Illustration of the Windows SmartScreen box">
+          <span class="tag">Illustration</span>
+          <h3>Windows protected your PC</h3>
+          <p>Microsoft Defender SmartScreen prevented an unrecognised app from starting. Running this app might put your PC at risk.</p>
+          <span class="more">More info</span>
+          <div class="details">App: MovieBox_1.0.0_x64-setup.exe<br>Publisher: Unknown publisher</div>
+          <div class="buttons"><span class="btn run">Run anyway</span><span class="btn">Don't run</span></div>
+        </div>
+        <p class="muted">Some antivirus programs may also ask once. Choose <b>Allow</b>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step">
+      <div class="num">2</div>
+      <div>
+        <h2>Open MovieBox</h2>
+        <p>Double-click the <b>MovieBox</b> icon on your desktop (or find it in the Start menu). A short welcome tour shows you around.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step">
+      <div class="num">3</div>
+      <div>
+        <h2>Find something and press Play</h2>
+        <p>Use <b>Search</b> or browse <b>Home</b>. Click a poster, then press <b>▶ Play</b>. It plays inside the app with subtitles.</p>
+        <div class="grid">
+          <div class="tip"><b>Full screen</b>Press <kbd>F</kbd> or double-click the video.</div>
+          <div class="tip"><b>Pause</b>Press <kbd>Space</kbd> or click the video.</div>
+          <div class="tip"><b>Skip</b><kbd>←</kbd> <kbd>→</kbd> skip 10 s. Hold <kbd>Ctrl</kbd> for 1 minute.</div>
+          <div class="tip"><b>Volume</b><kbd>↑</kbd> <kbd>↓</kbd> or the mouse wheel.</div>
+          <div class="tip"><b>Watch offline</b>Press <b>Download</b>, then play it from <b>Downloads</b>.</div>
+          <div class="tip"><b>All shortcuts</b>Press <kbd>?</kbd> while watching.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Something not working?</h2>
+    <p>Open <b>Help</b> in MovieBox. It has a "Something's not working?" page with fixes in order, and a <b>Report a problem</b> button that opens the log file you can send to whoever helps you.</p>
+  </div>
+
+  <footer>MovieBox is built on the open-source MovieBox-Tui and the mpv player. No accounts, no tracking.</footer>
+</div>
+</body>
+</html>

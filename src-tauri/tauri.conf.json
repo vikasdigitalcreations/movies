@@ -24,16 +24,26 @@
     ],
     "security": {
       "csp": null,
-      "assetProtocol": { "enable": true, "scope": ["**"] }
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "MovieBox",
     "shortDescription": "Watch and download movies and series",
     "copyright": "MovieBox-Tui (MIT/Apache-2.0), mpv (LGPL)",
-    "resources": ["lib/**/*"],
+    "resources": {
+      "lib/*": "lib/",
+      "docs/*": "docs/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,11 +52,17 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerHooks": "./installer/hooks.nsh",
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": ""
       }
-    }
+    },
+    "longDescription": "MovieBox lets you browse, stream and download movies and series with a built-in player."
   }
 }
