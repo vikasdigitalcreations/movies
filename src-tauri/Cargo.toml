@@ -1,0 +1,42 @@
+[package]
+name = "moviebox"
+version = "1.0.0"
+description = "MovieBox - watch and download movies and series"
+authors = ["MovieBox"]
+edition = "2021"
+
+[lib]
+name = "moviebox_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-os = "2"
+tauri-plugin-log = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-libmpv = "0.3.2"
+moviebox-tui = { path = "../vendor/moviebox-tui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "stream"] }
+futures = "0.3"
+log = "0.4"
+dirs = "6"
+sha2 = "0.10"
+fs2 = "0.4"
+windows-sys = { version = "0.59", features = ["Win32_System_Power"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+panic = "abort"
+strip = true
