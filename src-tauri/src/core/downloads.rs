@@ -346,7 +346,7 @@ impl DownloadManager {
                 .unwrap_or_else(|| "srt".into());
             let sub_path = dest.with_extension(format!("{lang}.{sub_ext}"));
             if !sub_path.exists() {
-                if let Ok(Ok(resp)) = tokio::time::timeout(std::time::Duration::from_secs(20), self.service.http_client().get(&sub).send()).await {
+                if let Ok(Ok(resp)) = tokio::time::timeout(std::time::Duration::from_secs(20), self.service.http_client().get(&sub).header("User-Agent", self.service.client.user_agent()).send()).await {
                     if let Ok(bytes) = resp.bytes().await {
                         let _ = tokio::fs::write(&sub_path, bytes).await;
                     }
@@ -356,7 +356,7 @@ impl DownloadManager {
 
         let mut refreshed = false;
         let result = loop {
-            let client = build_client(&headers);
+            let client = build_client(&headers, self.service.client.user_agent());
             let id = task.id.clone();
             let this = self.clone();
             let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(2);
@@ -477,7 +477,8 @@ fn cleanup_files(dest: &std::path::Path, include_video: bool) {
     }
 }
 
-fn build_client(headers: &[(String, String)]) -> reqwest::Client {
+/// `fallback_ua` mirrors MovieBox-Tui: the MovieBox app user agent (the CDN answers 428 to browser user agents).
+fn build_client(headers: &[(String, String)], fallback_ua: &str) -> reqwest::Client {
     let mut builder = moviebox_tui::net::http_client_builder().connect_timeout(std::time::Duration::from_secs(15));
     let mut map = reqwest::header::HeaderMap::new();
     let mut ua = false;
@@ -490,7 +491,7 @@ fn build_client(headers: &[(String, String)]) -> reqwest::Client {
         }
     }
     if !ua {
-        builder = builder.user_agent(moviebox_tui::net::DEFAULT_BROWSER_USER_AGENT);
+        builder = builder.user_agent(fallback_ua);
     }
     builder.default_headers(map).build().unwrap_or_default()
 }

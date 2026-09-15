@@ -242,6 +242,9 @@ export function PlayerPage() {
         case "sub-delay":
           if (typeof v === "number") setSubDelay(v);
           break;
+        case "eof-reached":
+          if (v === true) endedRef.current();
+          break;
       }
     });
     const unEvents = onEvents((ev) => {
@@ -250,9 +253,9 @@ export function PlayerPage() {
         attempt.current.started = true;
         setPhase("playing");
       } else if (e.event === "end-file" && e.reason === "error") {
-        handleFailure();
+        failRef.current();
       } else if (e.event === "end-file" && e.reason === "eof") {
-        onEnded();
+        endedRef.current();
       }
     });
     return () => {
@@ -278,10 +281,10 @@ export function PlayerPage() {
         await load(s.url, s.headers, startPos);
         if (settings?.rememberSpeed && settings.lastSpeed && settings.lastSpeed !== 1) mpv.set("speed", settings.lastSpeed).catch(() => {});
       } catch (e) {
-        if (token === attempt.current.token) handleFailure(errText(e));
+        if (token === attempt.current.token) failRef.current(errText(e));
       }
       window.setTimeout(() => {
-        if (token === attempt.current.token && !attempt.current.started) handleFailure("timeout");
+        if (token === attempt.current.token && !attempt.current.started) failRef.current("timeout");
       }, 60000);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -471,6 +474,8 @@ export function PlayerPage() {
   );
 
   function onEnded() {
+    if (endedToken.current === attempt.current.token) return;
+    endedToken.current = attempt.current.token;
     const L = live.current;
     if (sleepRef.current?.kind === "episode") {
       setSleep(null);
@@ -493,6 +498,11 @@ export function PlayerPage() {
   dismissRef.current = upNextDismissed;
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
+  const endedToken = useRef(-1);
+  const endedRef = useRef(onEnded);
+  endedRef.current = onEnded;
+  const failRef = useRef(handleFailure);
+  failRef.current = handleFailure;
 
   useEffect(() => {
     if (phase !== "playing" || !next || !settings?.autoplayNext || upNextDismissed || sleep?.kind === "episode") return;

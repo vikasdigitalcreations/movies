@@ -69,6 +69,7 @@ export async function playerInit(opts: { volume: number; subSize: number; subBac
       "demuxer-readahead-secs": "60",
       "cache-pause-initial": "yes",
       "cache-pause-wait": "3",
+      "hr-seek": "yes",
       "network-timeout": "30",
       "audio-pitch-correction": "yes",
       af: "scaletempo2",
@@ -118,7 +119,8 @@ function headerOption(headers: [string, string][]) {
 
 export async function load(url: string, headers: [string, string][], start: number) {
   const { ua, referer, fields } = headerOption(headers);
-  await setProperty("user-agent", ua ?? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
+  // The CDN rejects browser-like user agents that lack browser headers (HTTP 428), so fall back to libmpv's own.
+  await setProperty("user-agent", ua ?? "libmpv");
   await setProperty("referrer", referer ?? "");
   await setProperty("http-header-fields", fields);
   await setProperty("pause", false);

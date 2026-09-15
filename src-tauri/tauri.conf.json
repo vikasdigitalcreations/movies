@@ -59,8 +59,7 @@
         "installMode": "currentUser",
         "displayLanguageSelector": false,
         "installerHooks": "./installer/hooks.nsh",
-        "installerIcon": "icons/icon.ico",
-        "startMenuFolder": ""
+        "installerIcon": "icons/icon.ico"
       }
     },
     "longDescription": "MovieBox lets you browse, stream and download movies and series with a built-in player."
