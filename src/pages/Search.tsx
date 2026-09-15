@@ -112,6 +112,7 @@ export function SearchPage() {
     <div className="h-full overflow-y-auto px-8 pb-10 pt-8">
       <div className="relative mx-auto mb-6 max-w-3xl">
         <form
+          className="relative"
           onSubmit={(e) => {
             e.preventDefault();
             submit(sugIndex >= 0 ? suggestions[sugIndex] : query);

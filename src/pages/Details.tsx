@@ -128,7 +128,7 @@ export function DetailsPage() {
   const title = d?.title ?? card?.title ?? "";
 
   return (
-    <div className="relative h-full overflow-y-auto">
+    <div className="relative h-full overflow-y-auto overflow-x-hidden">
       {poster && <img src={posterUrl(poster, 900)} alt="" className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] w-full scale-110 object-cover opacity-40 blur-3xl" />}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] bg-gradient-to-b from-transparent via-ink/60 to-ink" />
       <div className="relative px-8 pb-12 pt-5">
