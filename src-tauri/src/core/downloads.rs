@@ -269,8 +269,10 @@ impl DownloadManager {
         }
         if let Some(t) = task {
             let p = PathBuf::from(&t.path);
-            if t.status != Status::Done || delete_file {
-                cleanup_files(&p, t.status == Status::Done && delete_file);
+            let finished = t.status == Status::Done;
+            if !finished || delete_file {
+                // unfinished: drop partial data and its subtitle; finished + delete: drop everything
+                cleanup_files(&p, finished && delete_file, true);
             }
             let _ = self.app.emit("download://removed", &t.id);
         }
@@ -403,7 +405,7 @@ impl DownloadManager {
             pos.map(|p| r.remove(p)).is_some()
         };
         if was_removed {
-            cleanup_files(&dest, false);
+            cleanup_files(&dest, false, true);
             self.kick();
             return;
         }
@@ -452,32 +454,34 @@ fn notify_done(app: &tauri::AppHandle, t: &Task) {
     let _ = app.notification().builder().title("Download finished").body(body).show();
 }
 
-fn cleanup_files(dest: &std::path::Path, include_video: bool) {
+/// Removes a download's partial data: `<file>.part`, `<file>.part.json` and segment files `<file>.part.N`.
+/// `remove_video` also removes the finished video. `remove_subs` removes `<stem>.<lang>.srt|vtt|ass` next to it.
+/// Empty folders left behind (episode season folder, show folder) are removed too.
+fn cleanup_files(dest: &std::path::Path, remove_video: bool, remove_subs: bool) {
+    let Some(dir) = dest.parent() else { return };
     let name = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    for suffix in [".part", ".part.json"] {
-        let _ = std::fs::remove_file(dest.with_file_name(format!("{name}{suffix}")));
-    }
-    if include_video {
-        let _ = std::fs::remove_file(dest);
-        if let (Some(dir), Some(stem)) = (dest.parent(), dest.file_stem()) {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                let stem = stem.to_string_lossy().into_owned();
-                for e in entries.flatten() {
-                    let n = e.file_name().to_string_lossy().into_owned();
-                    if n.starts_with(&format!("{stem}.")) && (n.ends_with(".srt") || n.ends_with(".vtt") || n.ends_with(".ass")) {
-                        let _ = std::fs::remove_file(e.path());
-                    }
-                }
-            }
-            let _ = std::fs::remove_dir(dir);
-            if let Some(up) = dir.parent() {
-                let _ = std::fs::remove_dir(up);
+    let stem = dest.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            let is_part = n.starts_with(&format!("{name}.part"));
+            let is_sub = remove_subs
+                && n.starts_with(&format!("{stem}."))
+                && (n.ends_with(".srt") || n.ends_with(".vtt") || n.ends_with(".ass") || n.ends_with(".ssa"));
+            if is_part || is_sub {
+                let _ = std::fs::remove_file(e.path());
             }
         }
     }
+    if remove_video {
+        let _ = std::fs::remove_file(dest);
+    }
+    let _ = std::fs::remove_dir(dir);
+    if let Some(up) = dir.parent() {
+        let _ = std::fs::remove_dir(up);
+    }
 }
 
-/// `fallback_ua` mirrors MovieBox-Tui: the MovieBox app user agent (the CDN answers 428 to browser user agents).
 fn build_client(headers: &[(String, String)], fallback_ua: &str) -> reqwest::Client {
     let mut builder = moviebox_tui::net::http_client_builder().connect_timeout(std::time::Duration::from_secs(15));
     let mut map = reqwest::header::HeaderMap::new();
@@ -536,6 +540,21 @@ mod tests {
         assert!(s.ends_with("Show_ Name/Season 01/Show_ Name - S01E03 - Pilot.mp4"), "{s:?}");
         let m = build_path(root, &nt("movie"), "mkv");
         assert!(m.ends_with("Show_ Name (2024)/Show_ Name (2024) 1080p.mkv"), "{m:?}");
+    }
+
+    #[test]
+    fn cleanup_removes_segments_and_subs() {
+        let dir = std::env::temp_dir().join(format!("mb_cleanup_{}", std::process::id())).join("Show").join("Season 01");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("Show - S01E02.mp4");
+        for f in ["Show - S01E02.mp4.part", "Show - S01E02.mp4.part.json", "Show - S01E02.mp4.part.0", "Show - S01E02.mp4.part.1", "Show - S01E02.en.srt"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        std::fs::write(dir.join("Show - S01E01.mp4"), b"keep").unwrap();
+        cleanup_files(&dest, false, true);
+        let left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(left, vec!["Show - S01E01.mp4".to_string()]);
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap().parent().unwrap());
     }
 
     #[test]
