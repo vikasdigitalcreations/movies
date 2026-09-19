@@ -65,3 +65,4 @@ Thumbs.db
 *.tsbuildinfo
 !vendor/
 !src-tauri/src/bin/
+**/.claude/settings.local.json
