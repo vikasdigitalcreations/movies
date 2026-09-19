@@ -178,8 +178,8 @@ export function DownloadDialog({ target, onClose }: { target: DlTarget | null; o
               <label key={o.height} className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${o.height === height ? "border-white bg-white/10" : "border-white/10 hover:bg-white/5"}`}>
                 <span className="flex items-center gap-3">
                   <input type="radio" name="q" checked={o.height === height} onChange={() => setHeight(o.height)} className="accent-[#e50914]" />
-                  <span className="font-semibold">{o.height}p</span>
-                  <span className="text-sm text-white/50">{o.height >= 1080 ? "Full HD" : o.height >= 720 ? "HD" : "Saves space"}</span>
+                  <span className="font-semibold">{o.multi ? "Best available" : `${o.height}p`}</span>
+                  <span className="text-sm text-white/50">{o.multi ? "Highest quality the server offers" : o.height >= 1080 ? "Full HD" : o.height >= 720 ? "HD" : "Saves space"}</span>
                 </span>
                 {!isSeason && <span className="text-white/60">{fmtBytes(o.size)}</span>}
                 {isSeason && o.size ? <span className="text-sm text-white/50">≈ {fmtBytes(o.size)} per episode</span> : null}
@@ -201,7 +201,7 @@ export function DownloadDialog({ target, onClose }: { target: DlTarget | null; o
       )}
       {step === "confirm" && (
         <p className="text-white/75">
-          {prepared.length} of {target.items.length} episodes are ready to download at {height}p.
+          {prepared.length} of {target.items.length} episodes are ready to download at {height > 0 ? `${height}p` : "the best quality available"}.
         </p>
       )}
       {(step === "choose" || step === "confirm") && (

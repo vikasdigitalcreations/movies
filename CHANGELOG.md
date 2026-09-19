@@ -2,6 +2,21 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-09-20 — 1.1.0
+
+### Fixed
+- **Playing a film showed an advert instead of the film.** MovieBox's servers now answer every direct file link with the same 21-second "Update now. Keep watching." clip (`macdn.aoneroom.com/other/…`), for movies and episodes alike. Those links are recognised and dropped (`core/stream_pool::is_notice_url`), so playback uses the real DASH stream. Confirmed against the live API: the clip is 952 KB and 21 s long whatever title is asked for.
+- **Downloads were saving that advert**, ~1 MB of it, labelled with the film's real size. The download queue now refuses notice links outright.
+- **The back button bounced straight back into the video.** "Play" from the home banner or a poster's right-click menu carries a one-shot `autoplay` flag in the history entry; returning from the player re-mounted the details page, which saw the flag again and reopened the video. The flag is now cleared as soon as it is used (`src/pages/Details.tsx`).
+
+### Added
+- **Auto-update.** Every launch checks the release feed and offers the new version with a short countdown, then installs it and restarts (`src/components/Updater.tsx`, `tauri-plugin-updater`). Settings → About has a manual "Check for updates". Releases are published with `scripts/publish-release.ps1`.
+- **Downloads work again, through the DASH stream.** `core/dash.rs` reads the manifest, downloads the video and audio segments (resumable — segment counts are kept in `<file>.part.json`) and the bundled ffmpeg joins them into one playable file. `scripts/fetch-ffmpeg.ps1` fetches the LGPL ffmpeg build that ships as a Tauri sidecar.
+- Two network health checks that are skipped by default: `provider_health` (MovieBox still returns a real stream) and `dash_health` (the whole download path, end to end).
+
+### Changed
+- Quality list: MovieBox only grants one signed DASH manifest per title now, so the download dialog offers "Best available" rather than a list of file sizes.
+
 ## 2026-09-16
 
 ### Added

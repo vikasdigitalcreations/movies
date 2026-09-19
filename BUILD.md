@@ -11,6 +11,7 @@ A Windows app around the open-source MovieBox-Tui v0.1.20 (vendored in `vendor/m
 ```
 npm install
 npx tauri-plugin-libmpv-api setup-lib   # downloads libmpv-2.dll + libmpv-wrapper.dll into src-tauri/lib
+powershell -ExecutionPolicy Bypass -File scripts/fetch-ffmpeg.ps1   # ffmpeg sidecar, used to join downloaded DASH streams
 npm run tauri dev
 ```
 
@@ -22,8 +23,10 @@ npx tsc --noEmit
 
 ## Release
 ```
-npm run tauri build                      # -> src-tauri/target/release/bundle/nsis/MovieBox_1.0.0_x64-setup.exe
-powershell -File scripts/make-portable.ps1   # -> release/MovieBox_1.0.0_x64_portable.zip (+ copy of the installer)
+powershell -ExecutionPolicy Bypass -File scripts/publish-release.ps1 -Notes "What changed"   # build + sign + portable zip + GitHub release
+# or, without publishing:
+npm run tauri build                      # -> src-tauri/target/release/bundle/nsis/MovieBox_<version>_x64-setup.exe
+powershell -File scripts/make-portable.ps1   # -> release/MovieBox_<version>_x64_portable.zip (+ copy of the installer)
 ```
 
 ## Layout

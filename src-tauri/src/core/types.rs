@@ -153,7 +153,9 @@ impl StreamDto {
             url: m.resolver_url.clone(),
             headers: m.headers.clone(),
             resource_id: r.resource_id.clone(),
-            downloadable: super::stream_pool::is_direct_downloadable(r),
+            // Everything playable can be downloaded now: direct files straight off the
+            // server, DASH streams by way of the bundled ffmpeg.
+            downloadable: !super::stream_pool::is_notice_url(&m.resolver_url),
             source: r.provider.label().to_string(),
         })
     }

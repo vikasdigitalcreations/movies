@@ -168,6 +168,9 @@ impl DownloadManager {
     }
 
     pub async fn add(self: &Arc<Self>, new: NewTask) -> Result<Task, String> {
+        if crate::core::stream_pool::is_notice_url(&new.url) {
+            return Err("This title can't be downloaded right now — MovieBox only offers its \"update the app\" clip instead of the file. You can still watch it online.".into());
+        }
         let root = crate::commands::system::download_root(self.settings.read().await.download_dir.as_deref());
         let path = build_path(&root, &new, &ext_from_url(&new.url));
         {
@@ -316,7 +319,10 @@ impl DownloadManager {
     async fn refresh_url(&self, t: &Task) -> Option<(String, Vec<(String, String)>)> {
         // Signed links expire; fetch a fresh one for the same quality.
         let pool = crate::commands::streams::collect_streams(&self.service, &t.subject_id, t.season, t.episode, t.abs_index).await.ok()?;
-        let direct: Vec<_> = pool.into_iter().filter(crate::core::stream_pool::is_direct_downloadable).collect();
+        let direct: Vec<_> = pool
+            .into_iter()
+            .filter(|r| r.direct_url().map(|u| !crate::core::stream_pool::is_notice_url(u)).unwrap_or(false))
+            .collect();
         let rel = direct.iter().find(|r| r.resolution_u64() == t.height).or_else(|| pick_for_quality(&direct, t.height))?;
         let m = rel.mirrors.first()?;
         Some((m.resolver_url.clone(), m.headers.clone()))
@@ -354,6 +360,34 @@ impl DownloadManager {
                     }
                 }
             }
+        }
+
+        // MovieBox only serves DASH now: video and audio arrive as separate segment
+        // lists that the bundled ffmpeg joins back together once both are here.
+        if crate::core::dash::is_dash_url(&url) {
+            let client = build_client(&headers, self.service.client.user_agent());
+            let id = task.id.clone();
+            let this = self.clone();
+            let res = crate::core::dash::download_dash(&client, &url, &dest, task.height, cancel.clone(), move |downloaded, speed| {
+                if let Some(t) = this.update(&id, |t| {
+                    t.downloaded = downloaded;
+                    t.speed = speed;
+                    // The size the API reports covers the video only; once the audio
+                    // track pushes past it, trust what has actually arrived.
+                    if t.total.is_some_and(|total| downloaded > total) {
+                        t.total = Some(downloaded);
+                    }
+                }) {
+                    this.emit(&t);
+                }
+            })
+            .await
+            .map(|o| match o {
+                crate::core::dash::Outcome::Completed { bytes } => DownloadOutcome::Completed { bytes },
+                crate::core::dash::Outcome::Paused { bytes } => DownloadOutcome::Paused { bytes },
+            });
+            self.finish(task, dest, res.map_err(|e| e.to_string())).await;
+            return;
         }
 
         let mut refreshed = false;
@@ -397,6 +431,11 @@ impl DownloadManager {
                 _ => break res,
             }
         };
+        self.finish(task, dest, result.map_err(|e| e.to_string())).await;
+    }
+
+    /// Shared ending for both download paths: cleanup, status, notification, next task.
+    async fn finish(self: Arc<Self>, task: Task, dest: PathBuf, result: Result<DownloadOutcome, String>) {
         self.cancels.lock().unwrap().remove(&task.id);
 
         let was_removed = {

@@ -1,6 +1,6 @@
 [package]
 name = "moviebox"
-version = "1.0.0"
+version = "1.1.0"
 description = "MovieBox - watch and download movies and series"
 authors = ["MovieBox"]
 edition = "2021"
@@ -34,6 +34,9 @@ dirs = "6"
 sha2 = "0.10"
 fs2 = "0.4"
 windows-sys = { version = "0.59", features = ["Win32_System_Power"] }
+tauri-plugin-updater = "2.11.0"
+tauri-plugin-process = "2.3.1"
+quick-xml = "0.42.0"
 
 [profile.release]
 codegen-units = 1

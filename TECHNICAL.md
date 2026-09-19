@@ -1,6 +1,6 @@
 # Technical — MovieBox
 
-Last updated: 2026-09-16
+Last updated: 2026-09-20
 
 ## Stack summary
 
@@ -16,17 +16,19 @@ Last updated: 2026-09-16
 | Routing | react-router-dom (HashRouter) | ^7.18.3 |
 | Icons | lucide-react | ^1.46.0 |
 | Video | libmpv via tauri-plugin-libmpv | 0.3.2 |
+| Muxing | ffmpeg (LGPL build, bundled as a Tauri sidecar) | latest BtbN build |
+| Updates | tauri-plugin-updater against GitHub Releases | 2.11 |
 | Webview | Microsoft Edge WebView2 (system) | n/a |
 | Installer | NSIS via Tauri bundler, per-user | n/a |
 
-Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identifier `com.moviebox.desktop`, version `1.0.0`.
+Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identifier `com.moviebox.desktop`, version `1.1.0`.
 
 ## Languages
 
 - Rust (backend, `src-tauri/src`, plus the vendored crate).
 - TypeScript + TSX (frontend, `src`).
 - CSS (Tailwind 4 theme tokens, `src/styles/app.css`).
-- PowerShell (`scripts/make-portable.ps1`).
+- PowerShell (`scripts/make-portable.ps1`, `scripts/fetch-ffmpeg.ps1`, `scripts/publish-release.ps1`).
 - NSIS script (`src-tauri/installer/hooks.nsh`).
 - HTML (`index.html`, `src-tauri/docs/Getting Started.html`).
 
@@ -45,6 +47,8 @@ Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identif
 | tauri-plugin-opener | 2 | Open folders and links |
 | tauri-plugin-os | 2 | Platform info |
 | tauri-plugin-log | 2 | Rotating log file (2 MB, keeps 3) in the app log dir |
+| tauri-plugin-updater | 2.11 | Launch-time update check, download and install, signature-verified |
+| tauri-plugin-process | 2.3 | Restart after an update is installed |
 | moviebox-tui | 0.1.20 (path `../vendor/moviebox-tui`) | Providers, service, download engine, history, favorites |
 | serde / serde_json | 1 | DTO serialisation (camelCase across the bridge) |
 | tokio | 1 (`rt-multi-thread`, `macros`, `sync`, `time`, `fs`) | Async runtime for commands and the download queue |
@@ -54,6 +58,7 @@ Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identif
 | dirs | 6 | Config, download and pictures directories |
 | sha2 | 0.10 | Hashing for cache keys |
 | fs2 | 0.4 | Free disk space before a download |
+| quick-xml | 0.42 | Reading DASH manifests in `core/dash.rs` |
 | windows-sys (`Win32_System_Power`) | 0.59 | `SetThreadExecutionState` keep-awake |
 | tauri-build | 2 | Build script |
 
@@ -88,10 +93,11 @@ Release profile: `codegen-units = 1`, `lto = "thin"`, `opt-level = 3`, `panic = 
 | Service | Purpose | Auth method |
 |---|---|---|
 | MovieBox / aoneroom API (`api*.aoneroom.com`, `api.inmoviebox.com`) | Homepage tabs, search, suggestions, details, resource pages, play info, subtitles | None. Requests are signed by the vendored crate and need the MovieBox client user agent |
-| MovieBox CDN (`*.hakunaymatata.com` and peers) | Video segments and direct MP4 files | Per-stream `Referer`, `User-Agent` and `Cookie` headers returned with the play info |
+| MovieBox CDN (`*.hakunaymatata.com` and peers) | DASH manifests and their video/audio segments | Per-stream `Referer`, `User-Agent` and `Cookie` headers returned with the play info |
 | 4KHDHub | "Try another source" fallback only | None |
+| GitHub Releases (`github.com/vikasdigitalcreations/movies`) | `latest.json` update feed and the installer it points at | None; the repo is public so the app needs no token. Updates are rejected unless signed by the project key |
 
-The CDN returns **HTTP 428** for browser-like user agents and 206 for curl/okhttp/libmpv-style agents, so downloads and direct playback send the MovieBox client agent (`service.client.user_agent()`) and the player falls back to `libmpv`. No user data, account or email is ever sent to these services.
+Since September 2026 the API answers every **direct file** link (`macdn.aoneroom.com/other/…`) with a 21-second "Update now. Keep watching." advert instead of the video — the same clip for every title, movies and episodes alike. `core/stream_pool::is_notice_url` recognises those links and drops them, so only the signed DASH manifest is used. The CDN returns **HTTP 428** for browser-like user agents and 206 for curl/okhttp/libmpv-style agents, so downloads and direct playback send the MovieBox client agent (`service.client.user_agent()`) and the player falls back to `libmpv`. No user data, account or email is ever sent to these services.
 
 ## Folder structure
 
@@ -137,12 +143,14 @@ MovieBoxApp/
       downloads.rs              download_* commands (thin wrappers over the manager)
       system.rs                 settings, system info, free space, folders, logs, cache, keep-awake, online check
     src/core/
-      stream_pool.rs            Merge/dedupe/order releases, quality pick, downloadable check (unit-tested)
+      stream_pool.rs            Merge/dedupe/order releases, quality pick, advert-clip filter (unit-tested)
+      dash.rs                   DASH manifest parsing, resumable segment download, ffmpeg mux (unit-tested)
       downloads.rs              Persistent queue, workers, retries, cleanup, notifications (unit-tested)
       settings.rs               GuiSettings struct, load and save gui_settings.json
       types.rs                  DTOs shared with the frontend, friendly error mapping
-    capabilities/default.json   28 permissions (window, webview zoom, opener, dialog, notification, libmpv, ...)
+    capabilities/default.json   30 permissions (window, webview zoom, opener, dialog, notification, libmpv, ...)
     lib/                        libmpv-2.dll, libmpv-wrapper.dll (gitignored, fetched by setup-lib)
+    bin/                        ffmpeg sidecar (gitignored, fetched by scripts/fetch-ffmpeg.ps1)
     docs/Getting Started.html   One-page guide, opened after install
     installer/hooks.nsh         NSIS post-install and pre-uninstall hooks
     icons/                      App icons generated by tauri icon
@@ -158,7 +166,9 @@ MovieBoxApp/
 
 **Playing:** Details → `streams` collects releases for the episode → `stream_pool` merges mirrors, drops duplicates and orders best-first → the page picks the best at or below the preferred quality → `Player.tsx` calls `playerInit`, then loads the URL with its headers → mpv renders into the child window while React draws the controls above it. Progress is written through `history_progress` every 10 s and on exit; at 90% or more the title is marked watched.
 
-**Downloading:** `DownloadDialog` → `download_add` → `DownloadManager` builds the destination path, checks free space, persists the task to `downloads.json`, then a worker runs the vendored resumable `download::download()` with the MovieBox user agent. Progress is emitted as `download://progress` on every tick, removal as `download://removed`. Partial files are `<dest>.part`, `<dest>.part.json` and `<dest>.part.N`. A 401/403/404/410 triggers a fresh URL fetch and a retry. On completion the subtitle is saved beside the video and a Windows notification fires.
+**Downloading:** `DownloadDialog` → `download_add` → `DownloadManager` builds the destination path, checks free space, persists the task to `downloads.json`, then a worker takes one of two paths. A direct file goes through the vendored resumable `download::download()` with the MovieBox user agent; partial files are `<dest>.part`, `<dest>.part.json` and `<dest>.part.N`, and a 401/403/404/410 triggers a fresh URL fetch and a retry. A DASH stream goes through `core/dash.rs`: the manifest is parsed, the chosen video and audio segments are appended to `<dest>.part.video` and `<dest>.part.audio` with the segment counts kept in `<dest>.part.json` (so pause and resume continue rather than restart), and the bundled ffmpeg copies both into the final file. Progress is emitted as `download://progress` on every tick, removal as `download://removed`. On completion the subtitle is saved beside the video and a Windows notification fires.
+
+**Updating:** on launch `src/components/Updater.tsx` asks `tauri-plugin-updater` to read `latest.json` from the GitHub release. A newer version is downloaded, its signature checked against the public key in `tauri.conf.json`, installed by the NSIS installer in passive mode, and the app restarts itself. Failures are logged and ignored so a bad check never blocks watching.
 
 **Startup:** `AppState::new` loads settings, history and favorites, then `downloads.kick()` restarts anything that was still downloading when the app last closed.
 
@@ -190,7 +200,9 @@ No secrets, keys or tokens exist in this project.
 | `src-tauri/src/lib.rs` | Registers plugins, builds `AppState`, restarts the queue, lists all 32 commands |
 | `src-tauri/src/state.rs` | Shared state: service, history and favorites mutexes, settings `RwLock`, home and details caches, download manager |
 | `src-tauri/src/core/downloads.rs` | Queue persistence, worker scheduling, path building, URL refresh, cleanup of `.part*` and subtitle files, notifications |
-| `src-tauri/src/core/stream_pool.rs` | `merge_releases`, `sort_best_first`, `pick_for_quality`, `is_direct_downloadable`, ported from the TUI request layer |
+| `src-tauri/src/core/stream_pool.rs` | `merge_releases`, `sort_best_first`, `pick_for_quality`, `is_direct_downloadable`, `is_notice_url`/`drop_notice_mirrors`, ported from the TUI request layer |
+| `src-tauri/src/core/dash.rs` | `parse_manifest` (SegmentTemplate, `$Number$`/`$Time$`, timelines), resumable `download_dash`, `ffmpeg_path` and the mux step |
+| `src/components/Updater.tsx` | Launch update check with a countdown, progress card, restart, and the manual check used by Settings → About |
 | `src-tauri/src/core/types.rs` | Every DTO crossing the bridge plus `friendly()`, which turns provider errors into plain sentences |
 | `src-tauri/src/commands/catalog.rs` | Homepage JSON walking (group types, subject detection), search, suggest and details with caching |
 | `src-tauri/src/commands/streams.rs` | Stream collection per episode, subtitle listing and fetching, the confident-match-only 4KHDHub fallback |
@@ -201,4 +213,6 @@ No secrets, keys or tokens exist in this project.
 
 ## Scheduling / jobs / deployment infra
 
-None. There is no server, no CI and no scheduled job. Distribution is a file handed to the recipient: `release/MovieBox_1.0.0_x64-setup.exe`, with `release/MovieBox_1.0.0_x64_portable.zip` as the fallback. Both are produced locally with the commands in SETUP_GUIDE.md.
+No server, no CI and no scheduled job. Releases are built locally by `scripts/publish-release.ps1`, which signs the installer with the updater key, writes `release/latest.json` and pushes both to GitHub Releases with `gh`. Installed copies read that feed on every launch, so the only manual distribution step is the very first install (`MovieBox_1.1.0_x64-setup.exe`, with the portable zip as a fallback).
+
+The updater signing key lives at `%USERPROFILE%\.tauri\moviebox_updater.key` and is **not** in the repository. Losing it means installed copies will refuse every future update, and the only fix is reinstalling by hand.

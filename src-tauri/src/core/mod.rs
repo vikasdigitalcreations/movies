@@ -1,3 +1,4 @@
+pub mod dash;
 pub mod downloads;
 pub mod settings;
 pub mod stream_pool;

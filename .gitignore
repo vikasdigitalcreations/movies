@@ -66,3 +66,6 @@ Thumbs.db
 !vendor/
 !src-tauri/src/bin/
 **/.claude/settings.local.json
+
+# ffmpeg sidecar (fetched by scripts/fetch-ffmpeg.ps1)
+src-tauri/bin/

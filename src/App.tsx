@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Sidebar } from "./components/Sidebar";
 import { ContextMenu, OfflineBanner, Toasts, WelcomeTour } from "./components/Overlays";
+import { Updater } from "./components/Updater";
 import { HomePage } from "./pages/Home";
 import { SearchPage } from "./pages/Search";
 import { DetailsPage } from "./pages/Details";
@@ -134,6 +135,7 @@ function Shell() {
       </div>
       <ContextMenu />
       <WelcomeTour />
+      <Updater />
       <Toasts />
     </div>
   );

@@ -1,6 +1,6 @@
 # Masterplan — MovieBox
 
-Last updated: 2026-09-16
+Last updated: 2026-09-20
 
 ## Vision / problem solved
 
@@ -70,7 +70,8 @@ Video and UI are two stacked native layers: mpv draws into a child window, and t
 | C — "It's polished" | Welcome tour, Help/troubleshooting, context menus, keyboard navigation, offline banner, mini player, sleep timer, night mode, notifications | Done |
 | D — Package | Icon, Getting Started guide, NSIS hooks, installer, portable zip | Done |
 | E — Verify | Player, library, downloads, series, installer and portable test passes | Done |
-| F — Ship | Rebuild with the pending history-timestamp fix, retest, hand over the installer | Pending |
+| F — Ship | Rebuild with the pending history-timestamp fix, retest, hand over the installer | Done (v1.0.0, 2026-09-15) |
+| G — Keep it working | Block MovieBox's "update the app" advert clips, download DASH streams with a bundled ffmpeg, auto-update from GitHub Releases | Code done and tested in the dev app; the 1.1.0 release build is next |
 
 ## Key decisions
 
@@ -86,3 +87,7 @@ Video and UI are two stacked native layers: mpv draws into a child window, and t
 | Per-user NSIS install, no admin | The recipient may not have an administrator account; also avoids UAC on first run | 2026-09-15 |
 | Ship unsigned and explain SmartScreen | Certificates cost money. A Getting Started page shows the exact dialog and the "More info → Run anyway" path, and a portable zip is the backup | 2026-09-15 |
 | Persist the download queue to `downloads.json` | A crash or reboot mid-download resumes instead of restarting; verified by killing the app mid-download | 2026-09-15 |
+| Drop MovieBox's advert links instead of playing them | The API replaced every direct file with a 21-second "Update now. Keep watching." clip. Filtering them leaves only the signed DASH manifest, which is the real film. The alternative — showing the advert — looks like the app is broken | 2026-09-20 |
+| Bundle ffmpeg (LGPL) to download DASH | With direct files gone, a download means fetching video and audio segments separately and joining them. ffmpeg does that reliably; the alternative was writing a muxer or dropping the Downloads feature. Costs about 50 MB of installer | 2026-09-20 |
+| Fetch segments ourselves, mux at the end | Letting ffmpeg pull the manifest would have been less code but not resumable. Downloading segment by segment keeps pause/resume and honest progress for multi-GB files | 2026-09-20 |
+| Auto-update from public GitHub Releases | The provider will break again; without self-update every fix means re-sending an installer. The app fetches `latest.json` with no credentials, so the repository is public and updates are signature-checked | 2026-09-20 |

@@ -21,7 +21,7 @@ function TaskCard({ t, onAskDelete }: { t: DownloadTask; onAskDelete: (t: Downlo
           ? "Paused"
           : t.status === "failed"
             ? t.error ?? "Download failed"
-            : `${fmtBytes(t.total ?? t.downloaded)} · ${t.height ? `${t.height}p` : ""}`;
+            : [fmtBytes(t.total ?? t.downloaded), t.height ? `${t.height}p` : ""].filter(Boolean).join(" · ");
 
   return (
     <div className="fade-in flex items-center gap-4 rounded-2xl border border-white/6 bg-panel p-3 pr-4">

@@ -1,6 +1,6 @@
 # API — MovieBox
 
-Last updated: 2026-09-16
+Last updated: 2026-09-20
 
 ## Overview
 
@@ -50,7 +50,9 @@ Full metadata including seasons, episodes, dub languages and whether the title i
 ## Streams
 
 ### `streams(id, season: number, episode: number, absIndex: number) -> Stream[]`
-All playable releases for one movie or episode, already merged, deduplicated and ordered best-first by `core/stream_pool`. `multi: true` marks a multi-resolution DASH manifest (labelled "Auto"); `downloadable: true` marks a direct file that the download queue can take. `headers` must be passed to mpv or the download worker unchanged.
+All playable releases for one movie or episode, already merged, deduplicated and ordered best-first by `core/stream_pool`. `multi: true` marks a multi-resolution DASH manifest (labelled "Auto"); `downloadable: true` means the queue can take it, which since 1.1.0 includes DASH. `headers` must be passed to mpv or the download worker unchanged.
+
+MovieBox's "update the app" advert links are removed here (`is_notice_url`), so in practice a MovieBox title returns one DASH release. When nothing but adverts came back, the command rejects with "MovieBox isn't serving this title right now — it only offers its 'update the app' clip. Try another source or another title."
 
 ### `subtitles(id, resourceId: string, dubIds: string[], season, episode) -> Subtitle[]`
 External caption tracks for a release. Language labels are sanitised for display.
@@ -89,14 +91,18 @@ History and favorites are stored by the vendored crate in `%APPDATA%\moviebox-tu
 | `download_resume` | `(id) -> void` | Requeues a paused or failed task |
 | `download_remove` | `(id, deleteFile: boolean) -> void` | Removes the task; with `deleteFile` also deletes `.part*`, the video and its subtitle, then any directories left empty |
 
-`NewDownload` is `DownloadTask` minus the runtime fields (`id`, `path`, `status`, `downloaded`, `total`, `speed`, `error`, `added`), plus an optional `size`.
+`NewDownload` is `DownloadTask` minus the runtime fields (`id`, `path`, `status`, `downloaded`, `total`, `speed`, `error`, `added`), plus an optional `size`. `download_add` rejects an advert link outright.
 
 Destination naming (`build_path`):
 
 - Movie: `MovieBox\Title (2024)\Title (2024) 1080p.mp4`
 - Episode: `MovieBox\Show\Season 01\Show - S01E03 - Episode Title.mp4`
 
-Concurrency comes from `simultaneousDownloads` (default 2). Partial state is `<dest>.part`, `<dest>.part.json` and `<dest>.part.N` segment files. A 401/403/404/410 makes the worker re-fetch a fresh URL and retry.
+Concurrency comes from `simultaneousDownloads` (default 2).
+
+A **direct file** keeps its partial state in `<dest>.part`, `<dest>.part.json` and `<dest>.part.N`; a 401/403/404/410 makes the worker re-fetch a fresh URL and retry.
+
+A **DASH stream** (what MovieBox serves now) is handled by `core/dash.rs`: video and audio segments are appended to `<dest>.part.video` and `<dest>.part.audio`, the finished segment counts live in `<dest>.part.json`, and the bundled ffmpeg copies both tracks into the final file once they are complete. Pausing keeps the part files, so resuming continues from the last finished segment.
 
 ### Events
 
@@ -121,6 +127,10 @@ Concurrency comes from `simultaneousDownloads` (default 2). Partial state is `<d
 
 `Settings` fields: `preferredQuality` (0 = best), `subtitleLanguage`, `autoplayNext`, `rememberSpeed`, `seekStep`, `downloadDir?`, `simultaneousDownloads`, `subtitleSize`, `subtitleBackground`, `volume`, `lastSpeed`, `nightMode`, `uiZoom`, `tourDone`.
 
+## Updates (plugin, not an app command)
+
+`src/components/Updater.tsx` wraps `@tauri-apps/plugin-updater`: `check()` on launch, then `downloadAndInstall(onProgress)` and `relaunch()`. The feed is `https://github.com/vikasdigitalcreations/movies/releases/latest/download/latest.json`, and an update whose signature does not match the public key in `tauri.conf.json` is refused by the plugin. Nothing identifying the machine or the person is sent — it is a plain GET of a public file.
+
 ## Player bridge (plugin, not an app command)
 
 `src/lib/player.ts` wraps `tauri-plugin-libmpv-api`: `init` with the startup options, `setProperty` / `getProperty`, `command`, `observeProperties` and `listenEvents`. Observed properties include `pause`, `time-pos`, `duration`, `volume`, `mute`, `speed`, `paused-for-cache`, `cache-buffering-state`, `demuxer-cache-time`, `cache-speed`, `eof-reached`, `track-list`, `sid`, `aid`, `sub-delay`, `chapter-list`, `video-params`, `idle-active`.
@@ -136,6 +146,7 @@ Two constraints learned the hard way:
 |---|---|---|---|---|
 | MovieBox / aoneroom | `api*.aoneroom.com`, `api.inmoviebox.com` — homepage, search, suggest, details, resource page, play info, captions | All catalog and stream metadata | None; signed by the vendored crate, needs the MovieBox client user agent | Undocumented. Busy responses are surfaced as "The server is busy right now" |
 | MovieBox CDN | `*.hakunaymatata.com` and peers — DASH `.mpd` and direct MP4 | Video delivery | Per-stream `Referer`, `User-Agent`, `Cookie` headers from the play info | Returns HTTP 428 to browser-like user agents; 206 to curl/okhttp/libmpv-style agents |
-| 4KHDHub | Search and stream resolution | Fallback source only, on a confident title + year match | None | 15 s search / 20 s resolve timeouts in this app |
+| 4KHDHub | Search and stream resolution | Fallback source only, on a confident title + year match | None | 15 s search / 20 s resolve timeouts in this app. Every mirror it resolved was dead when last checked (2026-09-20) |
+| GitHub Releases | `latest.json` plus the signed installer | Auto-update | None; public repo | One GET per launch |
 
 Nothing about the user is sent to any of these: no account, no identifier, no email, no telemetry.

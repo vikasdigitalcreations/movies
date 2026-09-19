@@ -93,13 +93,18 @@ export function DetailsPage() {
 
   useEffect(() => {
     if (!d || autoDone.current) return;
+    if (!st.autoplay && !st.download) return;
+    autoDone.current = true;
+    // "Play"/"Download" straight from a poster is a one-shot intent. Forget it right
+    // away, otherwise coming back here from the player replays it and the video
+    // reopens instead of the page staying put.
+    navigate(location.pathname, { replace: true, state: st.card ? { card: st.card } : null });
     if (st.autoplay) {
-      autoDone.current = true;
       main?.run();
-    } else if (st.download) {
-      autoDone.current = true;
-      if (d.mediaType === "movie") setDl({ details: d, items: [{ season: 0, episode: 0 }] });
-      else if (seasonObj) setDl({ details: d, items: seasonObj.episodes.map((e) => ({ season, episode: e.number, title: e.title })) });
+    } else if (d.mediaType === "movie") {
+      setDl({ details: d, items: [{ season: 0, episode: 0 }] });
+    } else if (seasonObj) {
+      setDl({ details: d, items: seasonObj.episodes.map((e) => ({ season, episode: e.number, title: e.title })) });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d]);

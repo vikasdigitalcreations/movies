@@ -1,4 +1,4 @@
-use crate::core::stream_pool::{merge_releases, pick_for_quality, sort_best_first};
+use crate::core::stream_pool::{drop_notice_mirrors, merge_releases, pick_for_quality, sort_best_first};
 use crate::core::types::*;
 use crate::state::AppState;
 use moviebox_tui::providers::moviebox::adapt::moviebox_resource_item_to_release;
@@ -71,11 +71,15 @@ pub async fn collect_streams(service: &MovieBoxService, id: &str, season: usize,
     }
     merge_releases(&mut pool, direct, season, episode);
     pool.retain(|r| !r.mirrors.is_empty());
+    // MovieBox hands out an "Update now. Keep watching." advert clip instead of the
+    // real file on every direct link; never let one through to the player or a download.
+    let had_notice = drop_notice_mirrors(&mut pool);
     sort_best_first(&mut pool);
     if pool.is_empty() {
-        return Err(match play_err {
-            Some(e) => friendly(e),
-            None => "No playable source was found for this title.".into(),
+        return Err(match (play_err, had_notice) {
+            (Some(e), false) => friendly(e),
+            (_, true) => "MovieBox isn't serving this title right now — it only offers its \"update the app\" clip. Try another source or another title.".into(),
+            (None, false) => "No playable source was found for this title.".into(),
         });
     }
     Ok(pool)
@@ -164,4 +168,43 @@ pub async fn alternate_source(state: State<'_, AppState>, title: String, year: O
         }
     }
     Err("The other source isn't working right now either. Please try again later.".into())
+}
+
+#[cfg(test)]
+mod live {
+    use super::*;
+
+    /// Network check, not part of the normal suite:
+    /// `cargo test --lib provider_health -- --ignored --nocapture`
+    /// Confirms MovieBox still returns a real, fetchable stream (and not the
+    /// "Update now. Keep watching." advert clip) for a well-known title.
+    #[tokio::test]
+    #[ignore]
+    async fn provider_health() {
+        let service = MovieBoxService::new();
+        let hits = service
+            .search_typed(ProviderKind::MovieBox, "Inception", 1)
+            .await
+            .expect("search works");
+        let first = hits.first().expect("at least one hit");
+        println!("{} ({:?}) id={}", first.title, first.year, first.id.value);
+
+        let pool = collect_streams(&service, &first.id.value, 0, 0, 0)
+            .await
+            .expect("a playable stream");
+        for r in &pool {
+            let m = &r.mirrors[0];
+            println!("  {}p multi={} {}", r.resolution_u64(), r.is_multi_resolution(), m.resolver_url);
+            assert!(!crate::core::stream_pool::is_notice_url(&m.resolver_url), "notice clip leaked into the pool");
+        }
+
+        let m = &pool[0].mirrors[0];
+        let mut req = service.client.http_client().get(&m.resolver_url).header("Range", "bytes=0-1023");
+        for (k, v) in &m.headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+        let status = req.send().await.expect("stream reachable").status();
+        println!("  first mirror -> {status}");
+        assert!(status.is_success(), "stream answered {status}");
+    }
 }

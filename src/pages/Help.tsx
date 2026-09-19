@@ -8,7 +8,7 @@ import { useApp } from "../store/app";
 
 const FAQ: [string, string][] = [
   ["Do I need to install VLC or anything else?", "No. MovieBox has its own video player built in. Just open a title and press Play."],
-  ["Why does a video say it's buffering?", "Your internet is slower than the video. Wait a moment, or open the quality menu (the gear icon in the player) and pick 720p or 480p."],
+  ["Why does a video say it's buffering?", "Your internet is slower than the video. Give it a moment — the player keeps a large buffer and steps down to a lower quality on its own when the connection is slow."],
   ["How do I watch without internet?", "Open a movie or series, press Download, and when it's finished go to Downloads and press Play."],
   ["Where are my downloads saved?", "In your Downloads folder, inside a MovieBox folder. You can change this in Settings."],
   ["How do I turn subtitles on or off?", "While watching, click the speech-bubble icon or press C. Choose your usual language in Settings."],
@@ -77,8 +77,8 @@ export function HelpPage() {
             <li className="flex items-start gap-4">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 font-bold">2</span>
               <div className="flex-1">
-                <div className="font-semibold">Try another source or a lower quality</div>
-                <div className="text-sm text-white/55">If a video won't start, the player offers "Try another source". If it keeps buffering, pick 720p or 480p in the player's quality menu.</div>
+                <div className="font-semibold">Try another source</div>
+                <div className="text-sm text-white/55">If a video won't start, the player offers "Try another source". If it keeps buffering, wait a few seconds — the picture drops to a lower quality by itself and sharpens again later.</div>
               </div>
             </li>
             <li className="flex items-start gap-4">

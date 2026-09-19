@@ -76,15 +76,23 @@ pub fn pick_for_quality(pool: &[Release], preferred: u64) -> Option<&Release> {
         .or_else(|| playable.iter().copied().min_by_key(|r| r.resolution_u64()))
 }
 
-/// True when the release is a single file a plain HTTP client can download.
-pub fn is_direct_downloadable(r: &Release) -> bool {
-    match r.direct_url() {
-        Some(u) => {
-            let base = base_link(u);
-            !(base.ends_with(".mpd") || u.contains("/dash/") || base.ends_with(".m3u8"))
-        }
-        None => false,
+/// MovieBox now answers every direct-file link with a 21-second "Update now. Keep
+/// watching." clip instead of the video. Those links must never reach the player or
+/// the download queue: playing one shows the advert, downloading one saves ~1 MB of it.
+pub fn is_notice_url(url: &str) -> bool {
+    moviebox_tui::providers::moviebox::adapt::is_deprecation_notice_url(url)
+        || url.to_ascii_lowercase().contains("aoneroom.com/other/")
+}
+
+/// Drop every notice mirror, then every release left without a mirror.
+/// Returns true when something was dropped.
+pub fn drop_notice_mirrors(pool: &mut Vec<Release>) -> bool {
+    let before: usize = pool.iter().map(|r| r.mirrors.len()).sum();
+    for r in pool.iter_mut() {
+        r.mirrors.retain(|m| !is_notice_url(&m.resolver_url));
     }
+    pool.retain(|r| !r.mirrors.is_empty());
+    before != pool.iter().map(|r| r.mirrors.len()).sum::<usize>()
 }
 
 #[cfg(test)]
@@ -178,8 +186,16 @@ mod tests {
     }
 
     #[test]
-    fn dash_is_not_direct_downloadable() {
-        assert!(!is_direct_downloadable(&rel("x", "multi", "https://h/a.mpd?x=1", vec![])));
-        assert!(is_direct_downloadable(&rel("x", "720p", "https://h/a.mp4?sign=1", vec![])));
+    fn notice_clips_are_dropped() {
+        assert!(is_notice_url("https://macdn.aoneroom.com/other/2026/09/04/b164fbfb4347792950bdfbfb563d39d9.mp4"));
+        assert!(!is_notice_url("https://sacdn.hakunaymatata.com/dash/123_0_0_1080_h265_559/index.mpd"));
+        let mut pool = vec![
+            rel("notice", "1080p", "https://macdn.aoneroom.com/other/2026/09/04/b164fbfb4347792950bdfbfb563d39d9.mp4", vec![]),
+            rel("real", "multi", "https://sacdn.hakunaymatata.com/dash/1_0_0_1080_h265_559/index.mpd", vec![]),
+        ];
+        assert!(drop_notice_mirrors(&mut pool));
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool[0].filename, "real");
     }
+
 }

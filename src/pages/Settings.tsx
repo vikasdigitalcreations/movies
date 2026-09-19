@@ -5,6 +5,7 @@ import { api, type SystemInfo } from "../lib/api";
 import { fmtBytes } from "../lib/format";
 import { APP_SHORTCUTS, PLAYER_SHORTCUTS } from "../lib/shortcuts";
 import { Button, ConfirmDialog, PageHeader, Toggle } from "../components/ui";
+import { checkForUpdatesNow } from "../components/Updater";
 import { useApp } from "../store/app";
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -192,7 +193,13 @@ export function SettingsPage() {
 
         <Group title="About">
           <div className="space-y-2 px-4 py-4 text-sm text-white/65">
-            <p className="text-base font-semibold text-white">MovieBox {info?.version}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-base font-semibold text-white">MovieBox {info?.version}</p>
+              <Button size="sm" onClick={() => checkForUpdatesNow(toast)}>
+                Check for updates
+              </Button>
+            </div>
+            <p>MovieBox checks for a new version by itself every time you open it.</p>
             <p>A friendly Windows app built on the open-source MovieBox-Tui by mesamirh (MIT / Apache-2.0).</p>
             <p>Video playback by mpv (LGPL) through tauri-plugin-libmpv (MPL-2.0). Built with Tauri, React and lucide icons.</p>
             <p>No accounts, no tracking, no telemetry. Your history and lists stay on this PC.</p>
