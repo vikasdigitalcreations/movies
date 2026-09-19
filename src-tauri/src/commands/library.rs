@@ -61,7 +61,11 @@ fn to_item(r: &PlayRef) -> WatchHistoryItem {
         release_year: r.year.clone().unwrap_or_default(),
         season: r.season,
         episode: r.episode,
-        timestamp: 0,
+        // mark_watched keeps the item's own timestamp, so stamp "now" here (0 would sort it as 1970)
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
         duration_seconds: None,
         progress_seconds: 0,
         completed: false,
