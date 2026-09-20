@@ -40,11 +40,11 @@ Release build and publish (this is also what makes installed copies update thems
 powershell -ExecutionPolicy Bypass -File scripts/publish-release.ps1 -Notes "What changed"
 ```
 
-Output lands in `release/`: `MovieBox_1.1.0_x64-setup.exe`, `MovieBox_1.1.0_x64_portable.zip` and `latest.json`. Full details in SETUP_GUIDE.md.
+Output lands in `release/`: `MovieBox_1.1.1_x64-setup.exe`, `MovieBox_1.1.1_x64_portable.zip` and `latest.json`. Full details in SETUP_GUIDE.md.
 
 ## For the person receiving the app
 
-Double-click `MovieBox_1.1.0_x64-setup.exe`. The installer is not code-signed, so Windows shows "Windows protected your PC" once — click **More info → Run anyway**. A Getting Started page opens after install and explains that dialog. If the installer is blocked entirely, the portable zip runs from any folder without installing. After this one install, new versions arrive on their own.
+Double-click `MovieBox_1.1.1_x64-setup.exe`. The installer is not code-signed, so Windows shows "Windows protected your PC" once — click **More info → Run anyway**. A Getting Started page opens after install and explains that dialog. If the installer is blocked entirely, the portable zip runs from any folder without installing. After this one install, new versions arrive on their own.
 
 ## Docs
 

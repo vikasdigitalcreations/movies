@@ -2,6 +2,11 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-09-20 — 1.1.1
+
+### Fixed
+- The update check at launch could fail on a connection that wasn't ready yet and then stay quiet until the next launch. It now retries once, 15 seconds later (`src/components/Updater.tsx`).
+
 ## 2026-09-20 — 1.1.0
 
 ### Fixed

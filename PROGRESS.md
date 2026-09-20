@@ -4,9 +4,16 @@ Last updated: 2026-09-20
 
 ## Current status
 
-v1.1.0 is written and tested in the dev app; the release build and the first GitHub release are the remaining steps. This version fixes the two things that made v1.0.0 unusable in practice — MovieBox's servers had started answering every direct file link with a 21-second "Update now. Keep watching." advert, which both played instead of films and downloaded instead of them — and adds auto-update so a future breakage like that can be fixed without asking anyone to reinstall.
+v1.1.1 is built, published and installed on this PC. The release feed is live at
+`https://github.com/vikasdigitalcreations/movies/releases/latest/download/latest.json`, and the
+app updated itself from 1.1.0 to 1.1.1 unattended: 1.1.0 started at 00:52:36, found the new
+version, installed it and relaunched as 1.1.1 at 00:53:12.
 
-The shipped v1.0.0 artifacts in `release/` predate all of this.
+This version fixes the two things that made v1.0.0 unusable in practice — MovieBox's servers had
+started answering every direct file link with a 21-second "Update now. Keep watching." advert,
+which both played instead of films and downloaded instead of them — restores downloads through the
+DASH stream, and adds auto-update so the next breakage can be fixed without asking anyone to
+reinstall.
 
 ## Done
 
@@ -20,18 +27,20 @@ The shipped v1.0.0 artifacts in `release/` predate all of this.
 - **Auto-update (1.1.0)** — launch check, countdown, install, restart; `scripts/publish-release.ps1` builds and publishes the release the app reads.
 - **Packaging** — app icon, `Getting Started.html`, NSIS hooks (guide shortcut, opens once after a non-silent install), per-user install mode, embedded WebView2 bootstrapper, portable zip script, ffmpeg sidecar.
 - **Verification** (2026-09-15, v1.0.0): installer 23/23, portable 4/4, player shortcuts 22/22, library/navigation/offline 11/11, resume 4/4, series/autoplay/sleep 3/3 after the fix, downloads 6/7 (a test-path assumption, since corrected).
-- **Verification** (2026-09-20, v1.1.0, in the dev app): Rust unit tests 15/15; `provider_health` and `dash_health` pass against the live API; hero "Play" opens a real 55-minute episode; the player's back button lands on the details page and stays there, and a second Back reaches Home; a 523 MB download ran, paused at 89.3 MB, resumed at 89.3 MB (not from zero) and the subtitle was saved beside it.
+- **Verification** (2026-09-20, v1.1.0/v1.1.1, dev app and installed build): Rust unit tests 15/15; `provider_health` and `dash_health` pass against the live API; hero "Play" opens a real 55-minute episode; the player's back button lands on the details page and stays there, and a second Back reaches Home; a 523 MB download ran, paused at 89.3 MB, resumed at 89.3 MB (not from zero), finished as a 2:28:07 MP4 carrying video and audio, and played offline from the Downloads page; the installed build reported "You're on the latest version" from Settings and then updated itself 1.1.0 -> 1.1.1 unattended.
 
 ## In progress
 
-- Nothing in the working tree. The next step is the release build.
+- Nothing. The working tree is committed and the release is published.
 
 ## Next
 
-1. Stop the dev app (it holds `src-tauri/lib/libmpv-2.dll`).
-2. `powershell -File scripts/publish-release.ps1 -Notes "..."` — builds, signs, makes the portable zip, writes `latest.json` and creates the GitHub release.
-3. Install 1.1.0 over 1.0.0 on this PC and confirm the app updates itself the next time it opens.
-4. Re-send the installer once: v1.0.0 has no updater, so the first hop to 1.1.0 is manual.
+1. Send `release/MovieBox_1.1.1_x64-setup.exe` to the friend once. v1.0.0 has no updater, so that
+   first hop is manual; after it, new versions arrive by themselves.
+2. Optional: strip `probe.exe` (a development-only API probe) from the bundle — it adds about
+   11 MB to the installer for no user-facing reason.
+3. Watch for the provider changing again. `provider_health` and `dash_health` answer that in
+   seconds, and `scripts/publish-release.ps1` ships the fix.
 
 ## Known issues / blockers
 

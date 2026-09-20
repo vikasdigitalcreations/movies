@@ -50,20 +50,28 @@ export function Updater() {
     [],
   );
 
-  // one check per launch, after the window has settled
+  // One check per launch, after the window has settled. The first attempt can land
+  // before the machine's connection is ready, so a single retry follows a failure.
   useEffect(() => {
-    const timer = setTimeout(async () => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const attempt = async (retriesLeft: number) => {
       try {
         const u = await check();
-        if (u) {
+        if (u && !cancelled) {
           setUpdate(u);
           setPhase("found");
         }
       } catch (err) {
         console.warn("update check failed", err);
+        if (retriesLeft > 0 && !cancelled) timers.push(setTimeout(() => attempt(retriesLeft - 1), 15000));
       }
-    }, 2500);
-    return () => clearTimeout(timer);
+    };
+    timers.push(setTimeout(() => attempt(1), 2500));
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
   }, []);
 
   // countdown, then install by itself

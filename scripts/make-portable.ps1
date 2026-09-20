@@ -1,4 +1,4 @@
-# Builds MovieBox_1.0.0_x64_portable.zip from the release build output.
+# Builds MovieBox_<version>_x64_portable.zip from the release build output.
 # Run after `npm run tauri build`.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -13,6 +13,8 @@ New-Item -ItemType Directory -Force -Path $stage, (Join-Path $stage "lib"), (Joi
 Copy-Item (Join-Path $rel "moviebox.exe") (Join-Path $stage "MovieBox.exe")
 Copy-Item (Join-Path $root "src-tauri\lib\*.dll") (Join-Path $stage "lib")
 Copy-Item (Join-Path $root "src-tauri\docs\*") (Join-Path $stage "docs")
+# The sidecar that joins downloaded video and audio into one file.
+Copy-Item (Join-Path $rel "ffmpeg.exe") (Join-Path $stage "ffmpeg.exe")
 
 @"
 MovieBox (portable)
@@ -22,7 +24,8 @@ MovieBox (portable)
 2. Double-click MovieBox.exe.
 3. If Windows shows "Windows protected your PC", click "More info" and then "Run anyway".
 
-Keep the "lib" folder next to MovieBox.exe - it contains the video player.
+Keep the "lib" folder and ffmpeg.exe next to MovieBox.exe - they are the video player
+and the tool that joins finished downloads into one file.
 MovieBox needs Microsoft Edge WebView2, which is already part of Windows 10 and 11.
 If the app window stays blank, install WebView2 from https://go.microsoft.com/fwlink/p/?LinkId=2124703
 or use the normal installer (MovieBox_${version}_x64-setup.exe), which installs it automatically.

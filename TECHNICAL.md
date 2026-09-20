@@ -21,7 +21,7 @@ Last updated: 2026-09-20
 | Webview | Microsoft Edge WebView2 (system) | n/a |
 | Installer | NSIS via Tauri bundler, per-user | n/a |
 
-Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identifier `com.moviebox.desktop`, version `1.1.0`.
+Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identifier `com.moviebox.desktop`, version `1.1.1`.
 
 ## Languages
 
@@ -213,6 +213,6 @@ No secrets, keys or tokens exist in this project.
 
 ## Scheduling / jobs / deployment infra
 
-No server, no CI and no scheduled job. Releases are built locally by `scripts/publish-release.ps1`, which signs the installer with the updater key, writes `release/latest.json` and pushes both to GitHub Releases with `gh`. Installed copies read that feed on every launch, so the only manual distribution step is the very first install (`MovieBox_1.1.0_x64-setup.exe`, with the portable zip as a fallback).
+No server, no CI and no scheduled job. Releases are built locally by `scripts/publish-release.ps1`, which signs the installer with the updater key, writes `release/latest.json` and pushes both to GitHub Releases with `gh`. Installed copies read that feed on every launch, so the only manual distribution step is the very first install (`MovieBox_1.1.1_x64-setup.exe`, with the portable zip as a fallback).
 
 The updater signing key lives at `%USERPROFILE%\.tauri\moviebox_updater.key` and is **not** in the repository. Losing it means installed copies will refuse every future update, and the only fix is reinstalling by hand.

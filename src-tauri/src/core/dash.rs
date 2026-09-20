@@ -651,3 +651,4 @@ mod tests {
         assert!(!is_dash_url("https://cdn.test/movie.mp4?sign=1"));
     }
 }
+

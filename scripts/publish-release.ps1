@@ -31,20 +31,30 @@ Write-Host "Publishing MovieBox $version"
 
 if (-not $SkipBuild) {
     if (Get-Process -Name "MovieBox", "moviebox" -ErrorAction SilentlyContinue) {
-        throw "MovieBox is running. Close it first — it holds libmpv-2.dll open and the build will fail."
+        throw "MovieBox is running. Close it first - it holds libmpv-2.dll open and the build will fail."
     }
-    $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $KeyPath
-    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
     Write-Host "Building (this takes a few minutes)..."
     npm run tauri build
     if ($LASTEXITCODE -ne 0) { throw "The build failed." }
     powershell -ExecutionPolicy Bypass -File "$root\scripts\make-portable.ps1"
 }
 
+# Signing is a separate step, and `createUpdaterArtifacts` is off in tauri.conf.json,
+# on purpose: handing the key to `tauri build` through the environment makes it stop
+# and ask for the key password, which nothing can answer in a non-interactive shell
+# (PowerShell cannot hold an empty environment variable). The updater only needs the
+# installer plus this .sig, which is exactly what these two steps produce.
+$setupForSigning = "src-tauri\target\release\bundle\nsis\MovieBox_${version}_x64-setup.exe"
+if (-not (Test-Path $setupForSigning)) { throw "No installer at $setupForSigning." }
+# Through cmd on purpose: PowerShell drops an empty "" argument, and the signer needs
+# one for -p because the key has no password.
+cmd /c "npx tauri signer sign -f ""$KeyPath"" -p """" ""$setupForSigning"""
+if ($LASTEXITCODE -ne 0) { throw "Signing the installer failed." }
+
 $setup = "src-tauri\target\release\bundle\nsis\MovieBox_${version}_x64-setup.exe"
 $sig = "$setup.sig"
 foreach ($f in @($setup, $sig)) {
-    if (-not (Test-Path $f)) { throw "Missing $f. Was the build run with the signing key set?" }
+    if (-not (Test-Path $f)) { throw "Missing $f." }
 }
 
 $notesText = if ($Notes) { $Notes } else { "MovieBox $version" }
@@ -61,15 +71,19 @@ $latest = [ordered]@{
 }
 $latestPath = Join-Path $root "release\latest.json"
 New-Item -ItemType Directory -Force -Path (Split-Path $latestPath) | Out-Null
-$latest | ConvertTo-Json -Depth 5 | Set-Content $latestPath -Encoding utf8
+# WriteAllText, not Set-Content: PowerShell 5.1 would add a UTF-8 BOM and the
+# updater's JSON parser rejects the file outright.
+[System.IO.File]::WriteAllText($latestPath, ($latest | ConvertTo-Json -Depth 5))
 Write-Host "Wrote $latestPath"
 
 $assets = @($setup, $sig, $latestPath)
 $portable = "release\MovieBox_${version}_x64_portable.zip"
 if (Test-Path $portable) { $assets += $portable }
 
-if (gh release view $tag 2>$null) {
-    Write-Host "Release $tag exists — replacing its files."
+# cmd swallows gh's output cleanly; PowerShell 5.1 turns native stderr into an error.
+cmd /c "gh release view $tag >nul 2>&1"
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Release $tag exists - replacing its files."
     gh release upload $tag $assets --clobber
 } else {
     gh release create $tag $assets --title "MovieBox $version" --notes $notesText

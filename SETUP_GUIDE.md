@@ -97,15 +97,15 @@ powershell -File scripts/make-portable.ps1
 
 Results:
 
-- `src-tauri/target/release/bundle/nsis/MovieBox_1.1.0_x64-setup.exe` — the installer (also copied to `release/`)
-- `release/MovieBox_1.1.0_x64_portable.zip` — unzip-and-run build with `lib/`, `docs/` and a "READ ME FIRST.txt"
+- `src-tauri/target/release/bundle/nsis/MovieBox_1.1.1_x64-setup.exe` — the installer (also copied to `release/`)
+- `release/MovieBox_1.1.1_x64_portable.zip` — unzip-and-run build with `lib/`, `docs/` and a "READ ME FIRST.txt"
 - `release/latest.json` — the update feed, when publishing
 
 The installer is per-user (`installMode: currentUser`), so it never asks for admin. It creates desktop and Start-menu shortcuts, a "MovieBox - Getting Started" Start-menu shortcut, and opens the guide once after a non-silent install.
 
 ## Deploy
 
-There is no server. Send `release/MovieBox_1.1.0_x64-setup.exe` to the recipient once (email, USB, cloud drive), and the portable zip as a backup if their antivirus or policy blocks installers. From then on the app updates itself from GitHub Releases, so a fix only needs `scripts/publish-release.ps1`.
+There is no server. Send `release/MovieBox_1.1.1_x64-setup.exe` to the recipient once (email, USB, cloud drive), and the portable zip as a backup if their antivirus or policy blocks installers. From then on the app updates itself from GitHub Releases, so a fix only needs `scripts/publish-release.ps1`.
 
 The update feed must stay publicly readable — the app fetches it with no credentials — which is why `vikasdigitalcreations/movies` is a public repository. A release built without the signing key will be refused by every installed copy.
 
@@ -135,13 +135,13 @@ To bump the version, edit `version` in both `src-tauri/tauri.conf.json` and `src
 | Downloads fail with HTTP 428 | The request used a browser-like user agent. Downloads and direct playback must send the MovieBox client agent; the player falls back to `libmpv` |
 | A film plays a short "Update now" advert | A link MovieBox substitutes for the real file slipped through. Check `is_notice_url` in `core/stream_pool.rs` against the URL in the log, and run `provider_health` |
 | A download ends with "couldn't be put together" | ffmpeg is missing or failed. Re-run `scripts/fetch-ffmpeg.ps1`; the ffmpeg error is in the app log |
-| The app never offers an update | The release has no `latest.json`, the repo is private again, or the installer was built without `TAURI_SIGNING_PRIVATE_KEY_PATH`. Open the feed URL in a browser to check |
+| The app never offers an update | The release has no `latest.json`, the repo is private again, or the installer was built without `TAURI_SIGNING_PRIVATE_KEY`. Open the feed URL in a browser to check |
 | Crash in libmpv-wrapper | Do not call `get_property` with the `node` format from the frontend. Observe node properties instead |
 | Playback stutters on a weak connection | The player already buffers 256 MiB / 60 s ahead and offers "Switch to 720p?" after repeated stalls; lower the preferred quality in Settings to make it permanent |
 
 ## For the person receiving the app
 
-1. Double-click `MovieBox_1.1.0_x64-setup.exe` and click through it. No admin password is needed.
+1. Double-click `MovieBox_1.1.1_x64-setup.exe` and click through it. No admin password is needed.
 2. If Windows shows a blue "Windows protected your PC" box, click **More info**, then **Run anyway**. It only happens once.
 3. A MovieBox icon appears on the desktop. Double-click it.
 4. A short welcome tour explains searching, opening a title, playing and downloading. It can be reopened from Help.
