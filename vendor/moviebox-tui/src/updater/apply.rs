@@ -21,6 +21,12 @@ pub enum InstallationEnvironment {
     WindowsHelper,
 }
 
+impl InstallationEnvironment {
+    pub fn has_managed_notice(&self) -> bool {
+        !matches!(self, Self::DirectReplace | Self::WindowsHelper)
+    }
+}
+
 pub fn detect_environment(exe_path: &Path) -> InstallationEnvironment {
     if std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists() {
         return InstallationEnvironment::Flatpak;

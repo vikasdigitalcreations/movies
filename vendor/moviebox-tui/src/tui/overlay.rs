@@ -705,6 +705,18 @@ pub struct UpdateModalLayout {
 }
 
 pub fn update_modal_layout(area: Rect, notes: &str) -> UpdateModalLayout {
+    let has_managed_notice = std::env::current_exe()
+        .ok()
+        .map(|p| crate::updater::apply::detect_environment(&p).has_managed_notice())
+        .unwrap_or(false);
+    update_modal_layout_with_env(area, notes, has_managed_notice)
+}
+
+pub fn update_modal_layout_with_env(
+    area: Rect,
+    notes: &str,
+    has_managed_notice: bool,
+) -> UpdateModalLayout {
     let note_lines_count = notes
         .lines()
         .map(|l| l.trim())
@@ -715,18 +727,19 @@ pub fn update_modal_layout(area: Rect, notes: &str) -> UpdateModalLayout {
                 && !lower.contains("press [o]")
                 && !lower.contains("press o to")
         })
-        .count();
+        .count()
+        .max(1);
 
     let min_w: u16 = 50;
     let max_w: u16 = 76;
     let available_w = area.width.saturating_sub(4);
     let desired_w = max_w.min(available_w).max(min_w.min(available_w));
 
-    let header_rows: u16 = 3;
+    let header_rows: u16 = if has_managed_notice { 5 } else { 4 };
     let footer_rows: u16 = 3;
     let available_height = area.height.saturating_sub(4);
     let available_note_rows =
-        (available_height.saturating_sub(header_rows + footer_rows + 2) as usize).clamp(3, 16);
+        (available_height.saturating_sub(header_rows + footer_rows + 2) as usize).clamp(1, 16);
 
     let display_count = note_lines_count.min(available_note_rows);
     let has_more = note_lines_count > display_count;
@@ -775,10 +788,10 @@ mod tests {
         assert_eq!(layout.popup_area.width, 76);
         assert_eq!(layout.display_count, 4);
         assert!(!layout.has_more);
-        assert_eq!(layout.popup_area.height, 12);
+        assert_eq!(layout.popup_area.height, 13);
         assert_eq!(layout.popup_area.x, (80 - 76) / 2);
-        assert_eq!(layout.popup_area.y, (24 - 12) / 2);
-        assert_eq!(layout.button_row_y, layout.popup_area.y + 9);
+        assert_eq!(layout.popup_area.y, (24 - 13) / 2);
+        assert_eq!(layout.button_row_y, layout.popup_area.y + 10);
         let footer_start = layout.popup_area.x + 1 + (74 - 58) / 2;
         assert_eq!(layout.update_btn_end_x, footer_start + 18);
         assert_eq!(layout.open_btn_end_x, layout.update_btn_end_x + 26);

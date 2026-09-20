@@ -1,5 +1,5 @@
 // Developer probe: prints the shape of live API payloads. Not part of the app UI.
-use moviebox_tui::providers::{ProviderKind, ReleaseProvider};
+use moviebox_tui::providers::{ProviderKind, ReleaseProvider, ResolutionIntent};
 use moviebox_tui::service::MovieBoxService;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -237,7 +237,7 @@ async fn main() {
                     println!("  {} releases", rels.len());
                     for rel in rels.iter().take(5) {
                         print!("  {}p {} -> ", rel.resolution_u64(), rel.filename);
-                        match fourk.resolve_release(rel).await {
+                        match fourk.resolve_release(rel, ResolutionIntent::Playback).await {
                             Ok(src) => println!("OK {}", src.url.chars().take(90).collect::<String>()),
                             Err(e) => println!("FAILED: {e}"),
                         }

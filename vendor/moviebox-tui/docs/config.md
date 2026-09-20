@@ -53,8 +53,16 @@ All settings in `config.json` can be configured interactively inside the applica
 | `MOVIEBOX_FOURKHDHUB_URL` | Override the 4KHDHub base URL.                                                    |
 | `MOVIEBOX_THEME`          | Force a theme (e.g. `Mocha`, `Latte`, `Macchiato`, `Frappe`, `Nord`, `TokyoNight`, `Dracula`, `Gruvbox`, `RosePine`). When unset and no saved theme exists, the app auto-detects: `NO_COLOR` wins, truecolor terminals get full palettes, 256-color terminals get quantized palettes, and the OSC 11 background query picks light/dark variants with WCAG AA contrast. |
 | `MOVIEBOX_NO_IMAGE`       | Disable poster image queries (set to `1` or `true`).                              |
-| `MOVIEBOX_IMAGE_PROTOCOL` | Override image protocol (`kitty`, `sixel`, `iterm2`, or `none`/`off`).            |
+| `MOVIEBOX_IMAGE_PROTOCOL` | Override image protocol (`kitty`, `sixel`, `iterm2`, or `none`/`off`). Required when running inside `tmux` with an outer terminal that is not auto-detected as graphics-capable (Ghostty, Kitty, WezTerm, iTerm2, foot, Alacritty). Example: `MOVIEBOX_IMAGE_PROTOCOL=kitty moviebox-tui`. |
 | `MOVIEBOX_CELL_SIZE`      | Override terminal cell size as `WxH` (e.g. `10x20`) for poster scaling.           |
+
+### tmux poster passthrough
+
+Inside a `tmux` session, poster images are automatically enabled when the outer
+terminal is Ghostty, Kitty, WezTerm, iTerm2, foot, or Alacritty. `tmux` must
+have `allow-passthrough` enabled (set automatically by the app on supported
+terminals). For any other outer terminal, set
+`MOVIEBOX_IMAGE_PROTOCOL=kitty` (or `sixel`/`iterm2`) to force passthrough.
 
 ## CLI
 

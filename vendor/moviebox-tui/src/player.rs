@@ -57,7 +57,7 @@ pub fn detect() -> Vec<PlayerKind> {
     let mut players = Vec::new();
 
     let is_termux = crate::updater::artifact::is_termux_environment();
-    if is_termux && android_opener().is_some() {
+    if is_termux && !android_openers().is_empty() {
         players.push(PlayerKind::AndroidIntent);
     }
 
@@ -74,7 +74,7 @@ pub fn detect() -> Vec<PlayerKind> {
         players.push(PlayerKind::Vlc);
     }
 
-    if !is_termux && android_opener().is_some() {
+    if !is_termux && !android_openers().is_empty() {
         players.push(PlayerKind::AndroidIntent);
     }
 
@@ -155,26 +155,42 @@ fn build_player_process_command(executable: &str) -> Command {
     }
 }
 
-#[derive(Debug, Clone)]
 #[allow(clippy::enum_variant_names)]
-enum AndroidOpener {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AndroidOpener {
+    TermuxAm(String),
     TermuxOpen(String),
     TermuxOpenUrl(String),
-    TermuxAm(String),
     #[cfg(target_os = "android")]
     SystemAm(String),
 }
 
-fn probe_android_opener() -> Option<AndroidOpener> {
+pub fn probe_android_openers() -> Vec<AndroidOpener> {
+    let mut openers = Vec::new();
+
     if let Some(custom) = configured_executable("MOVIEBOX_ANDROID_PLAYER_PATH") {
         if custom.ends_with("termux-open-url") {
-            return Some(AndroidOpener::TermuxOpenUrl(custom));
+            openers.push(AndroidOpener::TermuxOpenUrl(custom));
         } else if custom.ends_with("termux-am") {
-            return Some(AndroidOpener::TermuxAm(custom));
+            openers.push(AndroidOpener::TermuxAm(custom));
         } else {
-            return Some(AndroidOpener::TermuxOpen(custom));
+            openers.push(AndroidOpener::TermuxOpen(custom));
         }
+        return openers;
     }
+
+    let mut push_unique = |opener: AndroidOpener| {
+        if !openers.iter().any(|existing| match (existing, &opener) {
+            (AndroidOpener::TermuxAm(a), AndroidOpener::TermuxAm(b))
+            | (AndroidOpener::TermuxOpen(a), AndroidOpener::TermuxOpen(b))
+            | (AndroidOpener::TermuxOpenUrl(a), AndroidOpener::TermuxOpenUrl(b)) => a == b,
+            #[cfg(target_os = "android")]
+            (AndroidOpener::SystemAm(a), AndroidOpener::SystemAm(b)) => a == b,
+            _ => false,
+        }) {
+            openers.push(opener);
+        }
+    };
 
     #[cfg(target_os = "android")]
     let is_termux = crate::updater::artifact::is_termux_environment();
@@ -182,15 +198,15 @@ fn probe_android_opener() -> Option<AndroidOpener> {
     if let Ok(prefix) = std::env::var("PREFIX") {
         let termux_am = format!("{prefix}/bin/termux-am");
         if Path::new(&termux_am).is_file() {
-            return Some(AndroidOpener::TermuxAm(termux_am));
+            push_unique(AndroidOpener::TermuxAm(termux_am));
         }
         let termux_open = format!("{prefix}/bin/termux-open");
         if Path::new(&termux_open).is_file() {
-            return Some(AndroidOpener::TermuxOpen(termux_open));
+            push_unique(AndroidOpener::TermuxOpen(termux_open));
         }
         let termux_open_url = format!("{prefix}/bin/termux-open-url");
         if Path::new(&termux_open_url).is_file() {
-            return Some(AndroidOpener::TermuxOpenUrl(termux_open_url));
+            push_unique(AndroidOpener::TermuxOpenUrl(termux_open_url));
         }
     }
 
@@ -199,63 +215,51 @@ fn probe_android_opener() -> Option<AndroidOpener> {
         crate::updater::artifact::TERMUX_PREFIX_USR
     );
     if Path::new(&termux_am_static).is_file() {
-        return Some(AndroidOpener::TermuxAm(termux_am_static));
+        push_unique(AndroidOpener::TermuxAm(termux_am_static));
     }
     let termux_open_static = format!(
         "{}/bin/termux-open",
         crate::updater::artifact::TERMUX_PREFIX_USR
     );
     if Path::new(&termux_open_static).is_file() {
-        return Some(AndroidOpener::TermuxOpen(termux_open_static));
+        push_unique(AndroidOpener::TermuxOpen(termux_open_static));
     }
     let termux_open_url_static = format!(
         "{}/bin/termux-open-url",
         crate::updater::artifact::TERMUX_PREFIX_USR
     );
     if Path::new(&termux_open_url_static).is_file() {
-        return Some(AndroidOpener::TermuxOpenUrl(termux_open_url_static));
+        push_unique(AndroidOpener::TermuxOpenUrl(termux_open_url_static));
     }
 
     if let Some(path) = find_in_path("termux-am") {
-        return Some(AndroidOpener::TermuxAm(path));
+        push_unique(AndroidOpener::TermuxAm(path));
     }
     if let Some(path) = find_in_path("termux-open") {
-        return Some(AndroidOpener::TermuxOpen(path));
+        push_unique(AndroidOpener::TermuxOpen(path));
     }
     if let Some(path) = find_in_path("termux-open-url") {
-        return Some(AndroidOpener::TermuxOpenUrl(path));
+        push_unique(AndroidOpener::TermuxOpenUrl(path));
     }
+
     #[cfg(target_os = "android")]
     if !is_termux {
         let is_root = unsafe { libc::getuid() == 0 };
         if is_root {
             if Path::new("/system/bin/am").is_file() {
-                return Some(AndroidOpener::SystemAm("/system/bin/am".to_string()));
+                push_unique(AndroidOpener::SystemAm("/system/bin/am".to_string()));
             }
             if let Some(path) = find_in_path("am") {
-                return Some(AndroidOpener::SystemAm(path));
+                push_unique(AndroidOpener::SystemAm(path));
             }
         }
     }
-    None
+
+    openers
 }
 
-fn android_opener() -> Option<AndroidOpener> {
-    static CACHED: std::sync::RwLock<Option<AndroidOpener>> = std::sync::RwLock::new(None);
-
-    if let Ok(guard) = CACHED.read() {
-        if let Some(opener) = &*guard {
-            return Some(opener.clone());
-        }
-    }
-
-    let detected = probe_android_opener();
-    if let Some(opener) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
-            *guard = Some(opener.clone());
-        }
-    }
-    detected
+pub fn android_openers() -> Vec<AndroidOpener> {
+    probe_android_openers()
 }
 
 fn append_android_intent_extras(
@@ -283,13 +287,14 @@ fn append_android_intent_extras(
     }
 }
 
-fn android_intent_command(
+pub fn android_intent_command_for_opener(
+    opener: &AndroidOpener,
     url: &str,
     subtitle: Option<&str>,
     headers: &[(String, String)],
 ) -> Command {
-    match android_opener() {
-        Some(AndroidOpener::TermuxOpen(path)) => {
+    match opener {
+        AndroidOpener::TermuxOpen(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("--chooser")
                 .arg("--content-type")
@@ -297,12 +302,12 @@ fn android_intent_command(
                 .arg(url);
             cmd
         }
-        Some(AndroidOpener::TermuxOpenUrl(path)) => {
+        AndroidOpener::TermuxOpenUrl(path) => {
             let mut cmd = Command::new(path);
             cmd.arg(url);
             cmd
         }
-        Some(AndroidOpener::TermuxAm(path)) => {
+        AndroidOpener::TermuxAm(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("start")
                 .arg("-a")
@@ -315,7 +320,7 @@ fn android_intent_command(
             cmd
         }
         #[cfg(target_os = "android")]
-        Some(AndroidOpener::SystemAm(path)) => {
+        AndroidOpener::SystemAm(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("start")
                 .arg("--user")
@@ -333,15 +338,50 @@ fn android_intent_command(
             cmd.env_remove("LD_PRELOAD");
             cmd
         }
-        None => {
+    }
+}
+
+pub fn android_intent_commands(
+    url: &str,
+    subtitle: Option<&str>,
+    headers: &[(String, String)],
+) -> Vec<(AndroidOpener, Command)> {
+    let openers = android_openers();
+    if openers.is_empty() {
+        let mut cmd = Command::new("termux-open");
+        cmd.arg("--chooser")
+            .arg("--content-type")
+            .arg("video/*")
+            .arg(url);
+        return vec![(AndroidOpener::TermuxOpen("termux-open".to_string()), cmd)];
+    }
+    openers
+        .into_iter()
+        .map(|opener| {
+            let cmd = android_intent_command_for_opener(&opener, url, subtitle, headers);
+            (opener, cmd)
+        })
+        .collect()
+}
+
+fn android_intent_command(
+    url: &str,
+    subtitle: Option<&str>,
+    headers: &[(String, String)],
+) -> Command {
+    let commands = android_intent_commands(url, subtitle, headers);
+    commands
+        .into_iter()
+        .next()
+        .map(|(_, cmd)| cmd)
+        .unwrap_or_else(|| {
             let mut cmd = Command::new("termux-open");
             cmd.arg("--chooser")
                 .arg("--content-type")
                 .arg("video/*")
                 .arg(url);
             cmd
-        }
-    }
+        })
 }
 
 fn mpv_command(
@@ -1459,6 +1499,7 @@ mod tests {
             None,
             None,
         );
+
         let args = cmd
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
@@ -1467,6 +1508,32 @@ mod tests {
         assert!(args.contains(&"--referrer=https://example.com/".to_string()));
         assert!(args.contains(&"--http-header-fields=Cookie: session=abc, token=123".to_string()));
         assert!(args.contains(&"--http-header-fields=Accept: text/html, */*".to_string()));
+    }
+    #[test]
+    fn test_android_intent_commands_fallback_order() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("termux_fallback_test_{}", std::process::id()));
+        let bin_dir = temp_dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let termux_am = bin_dir.join("termux-am");
+        let termux_open = bin_dir.join("termux-open");
+        std::fs::write(&termux_am, "#!/bin/sh\nexit 0").unwrap();
+        std::fs::write(&termux_open, "#!/bin/sh\nexit 0").unwrap();
+
+        unsafe {
+            std::env::set_var("TERMUX_VERSION", "0.118.0");
+            std::env::set_var("PREFIX", temp_dir.to_str().unwrap());
+        }
+        let commands = android_intent_commands("https://example.test/stream.m3u8", None, &[]);
+        unsafe {
+            std::env::remove_var("TERMUX_VERSION");
+            std::env::remove_var("PREFIX");
+        }
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert!(commands.len() >= 2);
+        assert!(matches!(commands[0].0, AndroidOpener::TermuxAm(_)));
+        assert!(matches!(commands[1].0, AndroidOpener::TermuxOpen(_)));
     }
 
     #[test]

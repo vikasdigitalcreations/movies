@@ -1,5 +1,7 @@
 use super::{hubcloud, parser};
-use crate::providers::models::{CatalogItem, MediaDetails, PlaybackSource, ProviderKind, Release};
+use crate::providers::models::{
+    CatalogItem, MediaDetails, PlaybackSource, ProviderKind, Release, ResolutionIntent,
+};
 use reqwest::Url;
 
 const DEFAULT_BASE_URL: &str = "https://4khdhub.one/";
@@ -15,6 +17,16 @@ pub enum FourKHdHubError {
     Parse(String),
     #[error("no playable mirrors: {0}")]
     NoPlayableMirror(String),
+}
+impl FourKHdHubError {
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            Self::Network(_) => "Cannot reach 4KHDHub.",
+            Self::InvalidUrl(_) => "Invalid 4KHDHub URL.",
+            Self::Parse(_) => "4KHDHub parse error.",
+            Self::NoPlayableMirror(_) => "Mirrors dead or expired.",
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -80,6 +92,7 @@ impl FourKHdHubClient {
     pub async fn resolve_release(
         &self,
         release: &Release,
+        intent: ResolutionIntent,
     ) -> Result<PlaybackSource, FourKHdHubError> {
         if release.provider != ProviderKind::FourKHdHub {
             return Err(FourKHdHubError::Parse(
@@ -95,15 +108,19 @@ impl FourKHdHubClient {
             async move {
                 let fetch = async {
                     if mirror_url.contains("hubcloud.") {
-                        hubcloud::resolve(&client, &mirror_url).await
+                        hubcloud::resolve(&client, &mirror_url, intent).await
                     } else if mirror_url.contains("hubdrive.") {
-                        hubcloud::resolve_hubdrive(&client, &mirror_url).await
+                        hubcloud::resolve_hubdrive(&client, &mirror_url, intent).await
+                    } else if mirror_url.contains("greenmotors.")
+                        || mirror_url.contains("greenmountmotors.")
+                    {
+                        hubcloud::resolve_greenmotors(&client, &mirror_url, intent).await
                     } else {
                         hubcloud::validate_playback_url(&mirror_url)
                             .map(|url| vec![(url, mirror_label, mirror_headers)])
                     }
                 };
-                tokio::time::timeout(std::time::Duration::from_millis(4000), fetch)
+                tokio::time::timeout(std::time::Duration::from_millis(7000), fetch)
                     .await
                     .map_err(|_| {
                         FourKHdHubError::NoPlayableMirror("mirror resolver timed out".into())
@@ -116,7 +133,7 @@ impl FourKHdHubClient {
         let mut candidates = Vec::new();
         for cand_list in mirror_results.into_iter().flatten() {
             for (url, label, headers) in cand_list {
-                let score = hubcloud::score(&url, &label);
+                let score = hubcloud::score(&url, &label, intent);
                 candidates.push((score, url, label, headers));
             }
         }
@@ -219,6 +236,9 @@ impl FourKHdHubClient {
                     || body_lower.contains("404 not found")
                     || body_lower.contains("link has expired")
                     || body_lower.contains("expired")
+                    || body_lower.contains("access denied")
+                    || body_lower.contains("downloadquotaexceeded")
+                    || body_lower.contains("generate link again")
                 {
                     return Err(FourKHdHubError::NoPlayableMirror(
                         "upstream mirror reported expired file link".into(),
@@ -264,6 +284,9 @@ impl FourKHdHubClient {
                         || wrapped_lower.contains("file not found")
                         || wrapped_lower.contains("404 not found")
                         || wrapped_lower.contains("expired")
+                        || wrapped_lower.contains("access denied")
+                        || wrapped_lower.contains("downloadquotaexceeded")
+                        || wrapped_lower.contains("generate link again")
                     {
                         return Err(FourKHdHubError::NoPlayableMirror(
                             "upstream mirror reported expired file link".into(),
@@ -330,7 +353,12 @@ mod tests {
             mirrors: Vec::new(),
             resource_id: None,
         };
-        assert!(client.resolve_release(&release).await.is_err());
+        assert!(
+            client
+                .resolve_release(&release, ResolutionIntent::Playback)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

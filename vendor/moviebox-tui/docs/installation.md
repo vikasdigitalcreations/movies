@@ -6,13 +6,13 @@ MovieBox-TUI is available across macOS, Linux, Windows, and Android (Termux).
 
 ## macOS and Linux
 
-Automated install:
+Open Terminal and run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.sh | bash
 ```
 
-Homebrew (macOS):
+Or via Homebrew (macOS):
 
 ```bash
 brew tap mesamirh/moviebox-tui https://github.com/mesamirh/MovieBox-Tui
@@ -25,7 +25,7 @@ brew install moviebox-tui
 
 ## Windows
 
-Install via PowerShell:
+Open PowerShell and run:
 
 ```powershell
 irm https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.ps1 | iex
@@ -35,19 +35,15 @@ irm https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.ps1 | i
 
 ## Android (Termux)
 
-1. Install dependencies and run the installer:
+Open Termux and run:
 
 ```bash
 pkg update && pkg install -y curl tar termux-tools termux-am
 curl -fsSL https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.sh | bash
-```
-
-2. Grant storage permission (required for video players and downloads):
-
-```bash
 termux-setup-storage
 ```
 
+*Note:* Requires an external video player installed on Android (e.g. VLC or any supported player).
 ---
 
 ## Cargo (Crates.io)
@@ -81,4 +77,28 @@ All release assets include cryptographically signed SHA-256 checksums and GitHub
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
 gh attestation verify <archive-file> -R mesamirh/MovieBox-Tui
+```
+---
+
+## Uninstallation
+
+### Automated Installer (macOS, Linux, Windows, Android)
+
+Simply re-run your original install command (`curl ... | bash` or `irm ... | iex`). When MovieBox-TUI is already installed, the installer automatically detects it and displays an interactive menu:
+
+```text
+MovieBox-TUI is already installed.
+What would you like to do?
+  1) Reinstall / Update to latest version
+  2) Uninstall
+  3) Cancel
+```
+
+Enter `2` to completely remove MovieBox-TUI from your system.
+
+### Package Managers
+
+```bash
+brew uninstall moviebox-tui     # Homebrew (macOS)
+cargo uninstall moviebox-tui    # Cargo
 ```

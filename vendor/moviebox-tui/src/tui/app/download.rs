@@ -49,7 +49,7 @@ impl App {
             || !self.state.available_seasons.is_empty();
         let season = self.state.selected_season;
         let episode = self.state.selected_episode;
-        let safe_title = crate::download::safe_file_stem(&clean_title);
+        let safe_title = crate::download::safe_file_stem(clean_title);
 
         let extension = link
             .split('?')
@@ -185,41 +185,41 @@ impl App {
                     Ok(Ok(response)) => match response.error_for_status() {
                         Ok(response) => match response.bytes().await {
                             Ok(bytes) => {
-                                if let Err(error) = tokio::fs::write(subtitle_path, bytes).await {
+                                if tokio::fs::write(subtitle_path, bytes).await.is_err() {
                                     sender
-                                        .send(Action::SetStatus(format!(
-                                            "Error: subtitle write failed: {error}"
-                                        )))
+                                        .send(Action::SetStatus(
+                                            "Error: Subtitle save failed.".to_string(),
+                                        ))
                                         .ok();
                                 }
                             }
-                            Err(error) => {
+                            Err(_) => {
                                 sender
-                                    .send(Action::SetStatus(format!(
-                                        "Error: subtitle download failed: {error}"
-                                    )))
+                                    .send(Action::SetStatus(
+                                        "Error: Subtitle download failed.".to_string(),
+                                    ))
                                     .ok();
                             }
                         },
-                        Err(error) => {
+                        Err(_) => {
                             sender
-                                .send(Action::SetStatus(format!(
-                                    "Error: subtitle download failed: {error}"
-                                )))
+                                .send(Action::SetStatus(
+                                    "Error: Subtitle download failed.".to_string(),
+                                ))
                                 .ok();
                         }
                     },
-                    Ok(Err(error)) => {
+                    Ok(Err(_)) => {
                         sender
-                            .send(Action::SetStatus(format!(
-                                "Error: subtitle download failed: {error}"
-                            )))
+                            .send(Action::SetStatus(
+                                "Error: Subtitle download failed.".to_string(),
+                            ))
                             .ok();
                     }
                     Err(_) => {
                         sender
                             .send(Action::SetStatus(
-                                "Error: subtitle download timed out".to_string(),
+                                "Error: Subtitle download timed out.".to_string(),
                             ))
                             .ok();
                     }
@@ -532,7 +532,10 @@ impl App {
                         tokio::spawn(async move {
                             let result = tokio::time::timeout(
                                 std::time::Duration::from_secs(18),
-                                client.resolve_release(&release),
+                                client.resolve_release(
+                                    &release,
+                                    crate::providers::ResolutionIntent::Download,
+                                ),
                             )
                             .await;
                             match result {
@@ -548,14 +551,17 @@ impl App {
                                 Ok(Err(error)) => {
                                     log::error!("4KHDHub download resolve failed: {error}");
                                     sender
-                                        .send(Action::SetStatus(format!("Error: 4KHDHub: {error}")))
+                                        .send(Action::SetStatus(format!(
+                                            "Error: 4KHDHub: {}",
+                                            error.user_message()
+                                        )))
                                         .ok();
                                 }
                                 Err(_) => {
                                     log::error!("4KHDHub download resolve timed out");
                                     sender
                                         .send(Action::SetStatus(
-                                            "Error: 4KHDHub download resolution timed out. Select another release (e.g. 1080p) or press Ctrl+P for MovieBox.".to_string(),
+                                            "Error: 4KHDHub: Timed out.".to_string(),
                                         ))
                                         .ok();
                                 }
@@ -683,7 +689,7 @@ impl App {
                         .map(|details| details.title.as_str())
                         .unwrap_or(crate::download::DEFAULT_STREAM_NAME);
                     let clean_title = crate::providers::moviebox::clean_moviebox_title(raw_title);
-                    let safe_title = crate::download::safe_file_stem(&clean_title);
+                    let safe_title = crate::download::safe_file_stem(clean_title);
 
                     let base_dir = self.resolve_download_base_dir();
                     let target_dir = base_dir

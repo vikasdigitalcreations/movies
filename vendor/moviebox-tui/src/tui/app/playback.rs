@@ -130,7 +130,7 @@ impl App {
                 self.state.is_resolving_playback = false;
                 self.state.pending_playback_source = None;
                 let message = if crate::updater::artifact::is_termux_environment() {
-                    "Install player intent tools: 'pkg install -y termux-tools termux-am' and ensure an Android player (VLC, MX Player, or Just Player) is installed."
+                    "Run 'pkg install termux-tools' and install an Android video player."
                 } else {
                     "Install mpv, IINA, or VLC to enable video playback."
                 };
@@ -380,7 +380,29 @@ impl App {
                 (link.clone(), local_subtitle.clone())
             };
 
-            let mut command = crate::tui::player::command(
+            let spawn_configured_command =
+                |mut cmd: std::process::Command, capture_stdout: bool| {
+                    cmd.stdin(std::process::Stdio::null());
+                    if capture_stdout {
+                        cmd.stdout(std::process::Stdio::piped());
+                    } else {
+                        cmd.stdout(std::process::Stdio::null());
+                    }
+                    cmd.stderr(std::process::Stdio::piped());
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::CommandExt;
+                        cmd.process_group(0);
+                    }
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        cmd.creation_flags(0x0000_0200);
+                    }
+                    cmd.spawn()
+                };
+            let is_android = matches!(kind, crate::tui::state::PlayerKind::AndroidIntent);
+            let command = crate::tui::player::command(
                 kind,
                 &effective_link,
                 effective_subtitle.as_deref(),
@@ -397,32 +419,49 @@ impl App {
                     "IINA opened without iina-cli: headers and subtitles unavailable.".to_string(),
                 ));
             }
-            let capture_stdout = matches!(kind, crate::tui::state::PlayerKind::AndroidIntent);
-            command.stdin(std::process::Stdio::null());
-            if capture_stdout {
-                command.stdout(std::process::Stdio::piped());
+
+            let spawn_result = if is_android {
+                let candidates = crate::player::android_intent_commands(
+                    &effective_link,
+                    effective_subtitle.as_deref(),
+                    &headers,
+                );
+                let mut spawned = None;
+                let mut last_err = None;
+                for (opener, cmd) in candidates {
+                    match spawn_configured_command(cmd, true) {
+                        Ok(child) => {
+                            log::info!("spawned android opener: {opener:?}");
+                            spawned = Some(child);
+                            break;
+                        }
+                        Err(err) => {
+                            log::warn!("failed to spawn opener {opener:?}: {err}");
+                            last_err = Some(err);
+                        }
+                    }
+                }
+                match spawned {
+                    Some(child) => Ok(child),
+                    None => Err(last_err.unwrap_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "No Android intent tools found",
+                        )
+                    })),
+                }
             } else {
-                command.stdout(std::process::Stdio::null());
-            }
-            command.stderr(std::process::Stdio::piped());
+                spawn_configured_command(command, false)
+            };
 
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::CommandExt;
-                command.process_group(0);
-            }
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                command.creation_flags(0x0000_0200);
-            }
-
-            match command.spawn() {
+            match spawn_result {
                 Ok(mut child) => {
                     let start_time = std::time::Instant::now();
                     let stderr_stream = child.stderr.take();
                     let stdout_stream = child.stdout.take();
-
+                    let fallback_link = effective_link.clone();
+                    let fallback_sub = effective_subtitle.clone();
+                    let fallback_headers = headers.clone();
                     tokio::task::spawn_blocking(move || {
                         let mut error_output = String::new();
                         let (stderr_tx, stderr_rx) = std::sync::mpsc::channel::<String>();
@@ -500,6 +539,56 @@ impl App {
                                 );
                             }
                             Ok(status) => {
+                                let is_termux_socket_err = is_android
+                                    && (error_output.contains("am.sock")
+                                        || error_output.contains("Could not connect to socket")
+                                        || error_output.contains("termux-am"));
+
+                                if is_termux_socket_err {
+                                    let fallback_candidates = crate::player::android_openers();
+                                    let secondary = fallback_candidates.into_iter().find(|op| {
+                                        matches!(
+                                            op,
+                                            crate::player::AndroidOpener::TermuxOpen(_)
+                                                | crate::player::AndroidOpener::TermuxOpenUrl(_)
+                                        )
+                                    });
+                                    if let Some(op) = secondary {
+                                        log::warn!(
+                                            "primary opener failed socket connection, retrying with fallback opener {op:?}"
+                                        );
+                                        let mut fallback_cmd =
+                                            crate::player::android_intent_command_for_opener(
+                                                &op,
+                                                &fallback_link,
+                                                fallback_sub.as_deref(),
+                                                &fallback_headers,
+                                            );
+                                        fallback_cmd.stdin(std::process::Stdio::null());
+                                        fallback_cmd.stdout(std::process::Stdio::piped());
+                                        fallback_cmd.stderr(std::process::Stdio::piped());
+                                        #[cfg(unix)]
+                                        {
+                                            use std::os::unix::process::CommandExt;
+                                            fallback_cmd.process_group(0);
+                                        }
+                                        if let Ok(mut retry_child) = fallback_cmd.spawn() {
+                                            if let Ok(retry_status) = retry_child.wait() {
+                                                if retry_status.success() {
+                                                    log::info!(
+                                                        "fallback android opener {op:?} succeeded"
+                                                    );
+                                                    if let Some(path) = temporary_subtitle {
+                                                        let _ = std::fs::remove_file(path);
+                                                    }
+                                                    sender.send(Action::PlayerExited).ok();
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 #[cfg(unix)]
                                 let signal = {
                                     use std::os::unix::process::ExitStatusExt;
@@ -656,7 +745,10 @@ impl App {
                         tokio::spawn(async move {
                             let result = tokio::time::timeout(
                                 std::time::Duration::from_secs(18),
-                                client.resolve_release(&release),
+                                client.resolve_release(
+                                    &release,
+                                    crate::providers::ResolutionIntent::Playback,
+                                ),
                             )
                             .await;
                             match result {
@@ -667,7 +759,10 @@ impl App {
                                     log::error!("4KHDHub resolve failed: {error}");
                                     sender.send(Action::PlayerExited).ok();
                                     sender
-                                        .send(Action::SetStatus(format!("Error: 4KHDHub: {error}")))
+                                        .send(Action::SetStatus(format!(
+                                            "Error: 4KHDHub: {}",
+                                            error.user_message()
+                                        )))
                                         .ok();
                                 }
                                 Err(_) => {
@@ -675,7 +770,7 @@ impl App {
                                     sender.send(Action::PlayerExited).ok();
                                     sender
                                         .send(Action::SetStatus(
-                                            "Error: 4KHDHub stream resolution timed out. Select another release (e.g. 1080p) or press Ctrl+P for MovieBox.".to_string(),
+                                            "Error: 4KHDHub: Timed out.".to_string(),
                                         ))
                                         .ok();
                                 }
@@ -894,11 +989,10 @@ impl App {
                 log::error!("player crashed (code {code_str}): {error_msg}");
 
                 let is_termux = crate::updater::artifact::is_termux_environment();
+                let error_lower = error_msg.to_ascii_lowercase();
                 let is_missing_activity = is_termux
-                    && (error_msg.contains("No Activity found")
-                        || error_msg.contains("ActivityNotFoundException")
-                        || error_msg.contains("no activity found"));
-
+                    && (error_lower.contains("no activity found")
+                        || error_lower.contains("activitynotfoundexception"));
                 let is_termux_tool_crash = is_termux
                     && (code == Some(126)
                         || error_msg.contains("Permission denied")
@@ -913,37 +1007,27 @@ impl App {
                                 || error_msg.contains("broadcast"))));
 
                 let is_headless_mpv = is_termux
-                    && (error_msg.contains("Failed to open display")
-                        || error_msg.contains("video_out")
-                        || error_msg.contains("vo/gpu")
-                        || error_msg.contains("vo=gpu"));
-
+                    && (error_lower.contains("failed to open display")
+                        || error_lower.contains("video_out")
+                        || error_lower.contains("vo/gpu")
+                        || error_lower.contains("vo=gpu"));
                 let (title, message) = if is_missing_activity {
+                    ("No Player", "Install a video player.".to_string())
+                } else if is_headless_mpv {
                     (
-                        "No Video Player",
-                        "Install a video player on Android.".to_string(),
+                        "CLI mpv",
+                        "Switch to Android Player in /settings.".to_string(),
                     )
                 } else if is_termux_tool_crash {
                     (
-                        "Termux Setup Needed",
-                        "Run: pkg install -y termux-am".to_string(),
-                    )
-                } else if is_headless_mpv {
-                    (
-                        "CLI mpv Unsupported",
-                        "Switch to Android Player in /settings.".to_string(),
+                        "Termux Setup",
+                        "Run 'pkg install termux-tools'.".to_string(),
                     )
                 } else {
-                    let display_err = if error_msg.is_empty() {
-                        "No error output provided by player.".to_string()
+                    let formatted_msg = if let Some(c) = code {
+                        format!("Player exited (code {c}).")
                     } else {
-                        error_msg.lines().last().unwrap_or(&error_msg).to_string()
-                    };
-                    let formatted_msg = if display_err.starts_with("Player exited with status code")
-                    {
-                        display_err
-                    } else {
-                        format!("{display_err} (code {code_str})")
+                        "Player exited.".to_string()
                     };
                     ("Playback Failed", formatted_msg)
                 };
@@ -1269,9 +1353,12 @@ mod tests {
         );
     }
 
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[tokio::test]
     async fn test_player_crashed_termux_actionable_notification() {
         let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
         }
@@ -1289,13 +1376,14 @@ mod tests {
             .notifications
             .back()
             .expect("expected notification");
-        assert_eq!(last_notification.title, "Termux Setup Needed");
-        assert_eq!(last_notification.message, "Run: pkg install -y termux-am");
+        assert_eq!(last_notification.title, "Termux Setup");
+        assert_eq!(last_notification.message, "Run 'pkg install termux-tools'.");
     }
 
     #[tokio::test]
     async fn test_player_crashed_termux_missing_activity() {
         let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
         }
@@ -1312,16 +1400,14 @@ mod tests {
             .notifications
             .back()
             .expect("expected notification");
-        assert_eq!(last_notification.title, "No Video Player");
-        assert_eq!(
-            last_notification.message,
-            "Install a video player on Android."
-        );
+        assert_eq!(last_notification.title, "No Player");
+        assert_eq!(last_notification.message, "Install a video player.");
     }
 
     #[tokio::test]
     async fn test_player_crashed_termux_headless_mpv() {
         let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
         }
@@ -1338,7 +1424,7 @@ mod tests {
             .notifications
             .back()
             .expect("expected notification");
-        assert_eq!(last_notification.title, "CLI mpv Unsupported");
+        assert_eq!(last_notification.title, "CLI mpv");
         assert_eq!(
             last_notification.message,
             "Switch to Android Player in /settings."
@@ -1348,6 +1434,7 @@ mod tests {
     #[tokio::test]
     async fn test_player_crashed_termux_exit_code_1_generic() {
         let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
         }
@@ -1364,8 +1451,8 @@ mod tests {
             .notifications
             .back()
             .expect("expected notification");
-        assert_eq!(last_notification.title, "Termux Setup Needed");
-        assert_eq!(last_notification.message, "Run: pkg install -y termux-am");
+        assert_eq!(last_notification.title, "Termux Setup");
+        assert_eq!(last_notification.message, "Run 'pkg install termux-tools'.");
     }
 
     #[tokio::test]

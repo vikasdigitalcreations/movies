@@ -668,7 +668,7 @@ printf "  %b•%b %bBinary:%b  %b%s%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RE
 if [ -n "$PLAYER_DETECTED" ]; then
     printf "  %b•%b %bPlayer:%b  %b%s (ready)%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_GREEN" "$PLAYER_DETECTED" "$C_RESET"
 elif [ "$IS_TERMUX" -eq 1 ]; then
-    printf "  %b•%b %bPlayer:%b  %bNone detected (run 'pkg install -y termux-tools termux-am')%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_SAPPHIRE" "$C_RESET"
+    printf "  %b•%b %bPlayer:%b  %bNone detected (run 'pkg install -y termux-tools')%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_SAPPHIRE" "$C_RESET"
 else
     printf "  %b•%b %bPlayer:%b  %bNone detected (mpv, VLC, or IINA recommended)%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_SAPPHIRE" "$C_RESET"
 fi
@@ -683,7 +683,7 @@ printf "    %b$ moviebox-tui%b\n\n" "$C_GREEN" "$C_RESET"
 
 if [ -z "$PLAYER_DETECTED" ]; then
     if [ "$IS_TERMUX" -eq 1 ]; then
-        printf "  %bℹ%b Note: Run %b'pkg install -y termux-tools termux-am'%b to enable video playback on Termux.\n" "$C_SAPPHIRE" "$C_RESET" "$C_BOLD" "$C_RESET"
+        printf "  %bℹ%b Note: Run %b'pkg install -y termux-tools'%b to enable video playback on Termux.\n" "$C_SAPPHIRE" "$C_RESET" "$C_BOLD" "$C_RESET"
         printf "    Streams play via external Android players (VLC, MX Player, or Just Player).\n\n"
     else
         printf "  %bℹ%b Note: A media player (mpv, VLC, or IINA) is recommended for video playback.\n\n" "$C_SAPPHIRE" "$C_RESET"

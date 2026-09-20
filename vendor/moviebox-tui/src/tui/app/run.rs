@@ -1084,7 +1084,11 @@ impl App {
                 .map(|p| crate::updater::apply::detect_environment(&p))
                 .unwrap_or(crate::updater::apply::InstallationEnvironment::DirectReplace);
 
-            let layout = crate::tui::overlay::update_modal_layout(area, notes);
+            let layout = crate::tui::overlay::update_modal_layout_with_env(
+                area,
+                notes,
+                env.has_managed_notice(),
+            );
             let popup_area = layout.popup_area;
             let display_count = layout.display_count;
             let _ = layout.has_more;
@@ -1115,6 +1119,7 @@ impl App {
             let divider_str = divider_char.repeat(inner_area.width as usize);
 
             let mut text = vec![
+                Line::from(""),
                 Line::from(vec![
                     Span::styled("Installed: ", self.theme.text_dim),
                     Span::styled(
@@ -1203,94 +1208,110 @@ impl App {
             ]));
             let basic = self.state.basic_terminal;
 
-            for line in note_lines.iter().take(display_count) {
-                let trimmed = line.trim();
-                let mut spans = Vec::new();
+            if note_lines.is_empty() {
+                text.push(Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled("No release notes provided.", self.theme.text_dim),
+                ]));
+            } else {
+                for line in note_lines.iter().take(display_count) {
+                    let trimmed = line.trim();
+                    let mut spans = Vec::new();
 
-                if trimmed.starts_with("### ")
-                    || trimmed.starts_with("## ")
-                    || trimmed.starts_with("# ")
-                {
-                    let title = trimmed.trim_start_matches('#').trim();
-                    spans.push(Span::raw("  "));
-                    if title.eq_ignore_ascii_case("Added") {
-                        spans.push(Span::styled(
-                            "[Added]",
-                            self.theme.teal.add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    } else if title.eq_ignore_ascii_case("Fixed") {
-                        spans.push(Span::styled(
-                            "[Fixed]",
-                            self.theme
-                                .rating
-                                .add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    } else if title.eq_ignore_ascii_case("Changed") {
-                        spans.push(Span::styled(
-                            "[Changed]",
-                            self.theme
-                                .sapphire
-                                .add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    } else if title.eq_ignore_ascii_case("Performance")
-                        || title.eq_ignore_ascii_case("Perf")
+                    if trimmed.starts_with("### ")
+                        || trimmed.starts_with("## ")
+                        || trimmed.starts_with("# ")
                     {
-                        spans.push(Span::styled(
-                            "[Performance]",
-                            self.theme
-                                .accent
-                                .add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    } else if title.eq_ignore_ascii_case("Security") {
-                        spans.push(Span::styled(
-                            "[Security]",
-                            self.theme
-                                .error
-                                .add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    } else {
-                        spans.push(Span::styled(
-                            title,
-                            self.theme
-                                .highlight
-                                .add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    }
-                } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-                    let bullet = trimmed[2..].trim();
-                    spans.push(Span::raw("    "));
-                    spans.push(Span::styled(
-                        if basic { "- " } else { "• " },
-                        self.theme.accent,
-                    ));
-                    if let Some(rest) = bullet.strip_prefix("**") {
-                        if let Some(end) = rest.find("**") {
-                            let title = &rest[..end];
-                            let after = &rest[end + 2..];
-                            let (colon, rest) = if let Some(stripped) = after.strip_prefix(':') {
-                                (": ", stripped.trim())
-                            } else {
-                                ("", after.trim())
-                            };
-                            let clean_rest = rest.replace('`', "");
+                        let title = trimmed.trim_start_matches('#').trim();
+                        spans.push(Span::raw("  "));
+                        if title.eq_ignore_ascii_case("Added") {
+                            spans.push(Span::styled(
+                                "[Added]",
+                                self.theme.teal.add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                        } else if title.eq_ignore_ascii_case("Fixed") {
+                            spans.push(Span::styled(
+                                "[Fixed]",
+                                self.theme
+                                    .rating
+                                    .add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                        } else if title.eq_ignore_ascii_case("Changed") {
+                            spans.push(Span::styled(
+                                "[Changed]",
+                                self.theme
+                                    .sapphire
+                                    .add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                        } else if title.eq_ignore_ascii_case("Performance")
+                            || title.eq_ignore_ascii_case("Perf")
+                        {
+                            spans.push(Span::styled(
+                                "[Performance]",
+                                self.theme
+                                    .accent
+                                    .add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                        } else if title.eq_ignore_ascii_case("Security") {
+                            spans.push(Span::styled(
+                                "[Security]",
+                                self.theme
+                                    .error
+                                    .add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                        } else {
                             spans.push(Span::styled(
                                 title,
-                                self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
+                                self.theme
+                                    .highlight
+                                    .add_modifier(ratatui::style::Modifier::BOLD),
                             ));
-                            if !colon.is_empty() {
-                                spans.push(Span::styled(colon, self.theme.subtext1));
-                            }
-                            if !clean_rest.is_empty() {
-                                let prefix_w = 4 + 2 + crate::tui::text::width(title) + colon.len();
-                                let budget =
-                                    (inner_area.width as usize).saturating_sub(prefix_w + 2);
-                                if budget > 0 {
-                                    spans.push(Span::styled(
-                                        crate::tui::text::truncate_width(&clean_rest, budget)
-                                            .into_owned(),
-                                        self.theme.text_dim,
-                                    ));
+                        }
+                    } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+                        let bullet = trimmed[2..].trim();
+                        spans.push(Span::raw("    "));
+                        spans.push(Span::styled(
+                            if basic { "- " } else { "• " },
+                            self.theme.accent,
+                        ));
+                        if let Some(rest) = bullet.strip_prefix("**") {
+                            if let Some(end) = rest.find("**") {
+                                let title = &rest[..end];
+                                let after = &rest[end + 2..];
+                                let (colon, rest) = if let Some(stripped) = after.strip_prefix(':')
+                                {
+                                    (": ", stripped.trim())
+                                } else {
+                                    ("", after.trim())
+                                };
+                                let clean_rest = rest.replace('`', "");
+                                spans.push(Span::styled(
+                                    title,
+                                    self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
+                                ));
+                                if !colon.is_empty() {
+                                    spans.push(Span::styled(colon, self.theme.subtext1));
                                 }
+                                if !clean_rest.is_empty() {
+                                    let prefix_w =
+                                        4 + 2 + crate::tui::text::width(title) + colon.len();
+                                    let budget =
+                                        (inner_area.width as usize).saturating_sub(prefix_w + 2);
+                                    if budget > 0 {
+                                        spans.push(Span::styled(
+                                            crate::tui::text::truncate_width(&clean_rest, budget)
+                                                .into_owned(),
+                                            self.theme.text_dim,
+                                        ));
+                                    }
+                                }
+                            } else {
+                                let clean = bullet.replace('`', "");
+                                let budget = (inner_area.width as usize).saturating_sub(4 + 2 + 2);
+                                spans.push(Span::styled(
+                                    crate::tui::text::truncate_width(&clean, budget).into_owned(),
+                                    self.theme.text,
+                                ));
                             }
                         } else {
                             let clean = bullet.replace('`', "");
@@ -1301,23 +1322,16 @@ impl App {
                             ));
                         }
                     } else {
-                        let clean = bullet.replace('`', "");
-                        let budget = (inner_area.width as usize).saturating_sub(4 + 2 + 2);
+                        let clean = trimmed.replace('`', "");
+                        let budget = (inner_area.width as usize).saturating_sub(4 + 2);
+                        spans.push(Span::raw("    "));
                         spans.push(Span::styled(
                             crate::tui::text::truncate_width(&clean, budget).into_owned(),
-                            self.theme.text,
+                            self.theme.text_dim,
                         ));
                     }
-                } else {
-                    let clean = trimmed.replace('`', "");
-                    let budget = (inner_area.width as usize).saturating_sub(4 + 2);
-                    spans.push(Span::raw("    "));
-                    spans.push(Span::styled(
-                        crate::tui::text::truncate_width(&clean, budget).into_owned(),
-                        self.theme.text_dim,
-                    ));
+                    text.push(Line::from(spans));
                 }
-                text.push(Line::from(spans));
             }
 
             text.push(Line::from(Span::styled(divider_str, self.theme.surface1)));

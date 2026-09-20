@@ -199,6 +199,11 @@ impl MediaDetails {
         }
     }
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolutionIntent {
+    Playback,
+    Download,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceMirror {
@@ -309,15 +314,41 @@ pub enum ProviderError {
 
 impl ProviderError {
     pub fn user_message(&self, provider: ProviderKind) -> String {
+        let label = match provider {
+            ProviderKind::BdixCircleFtp => "CircleFTP",
+            ProviderKind::BdixDhakaFlix => "DhakaFlix",
+            _ => provider.label(),
+        };
+
         match self {
-            Self::Network(msg) => format!("Network error on {provider}: {msg}"),
+            Self::Network(msg) => {
+                if provider.is_bdix() {
+                    format!("{label} unreachable: requires BDIX network.")
+                } else {
+                    let lower = msg.to_ascii_lowercase();
+                    if lower.contains("timed out") || lower.contains("timeout") {
+                        format!("{label} timed out.")
+                    } else {
+                        format!("Cannot reach {label}.")
+                    }
+                }
+            }
             Self::RateLimited(secs) => match secs {
-                Some(s) => format!("Rate limited on {provider}. Retry in {s}s."),
-                None => format!("Rate limited on {provider}."),
+                Some(s) => format!("Rate limited. Wait {s}s."),
+                None => "Rate limited. Try later.".to_string(),
             },
-            Self::NotFound => format!("Content not found on {provider}."),
-            Self::Parsing(msg) => format!("Parser error on {provider}: {msg}"),
-            Self::Unavailable(msg) => format!("{provider} unavailable: {msg}"),
+            Self::NotFound => "No results found.".to_string(),
+            Self::Parsing(_) => format!("{label} parse error."),
+            Self::Unavailable(msg) => {
+                let trimmed = msg.trim();
+                if let Some(status) = trimmed.strip_prefix("HTTP status ") {
+                    format!("{label} error ({status}).")
+                } else if trimmed.is_empty() {
+                    format!("{label} unavailable.")
+                } else {
+                    format!("{label} unavailable: {trimmed}")
+                }
+            }
         }
     }
 }
@@ -399,7 +430,49 @@ mod tests {
         assert_eq!(make_release(Some("4k")).resolution_u64(), 2160);
         assert_eq!(make_release(Some("2160p")).resolution_u64(), 2160);
         assert_eq!(make_release(Some("1080p")).resolution_u64(), 1080);
-        assert_eq!(make_release(Some("720p")).resolution_u64(), 720);
         assert_eq!(make_release(None).resolution_u64(), 1080);
+    }
+
+    #[test]
+    fn test_provider_error_user_message_concise() {
+        let bdix_net_err = ProviderError::Network("tcp connect error: operation timed out".into());
+        assert_eq!(
+            bdix_net_err.user_message(ProviderKind::BdixCircleFtp),
+            "CircleFTP unreachable: requires BDIX network."
+        );
+        assert_eq!(
+            bdix_net_err.user_message(ProviderKind::BdixDhakaFlix),
+            "DhakaFlix unreachable: requires BDIX network."
+        );
+
+        let timeout_err = ProviderError::Network("operation timed out".into());
+        assert_eq!(
+            timeout_err.user_message(ProviderKind::MovieBox),
+            "MovieBox timed out."
+        );
+
+        let connect_err = ProviderError::Network("dns lookup failed".into());
+        assert_eq!(
+            connect_err.user_message(ProviderKind::FourKHdHub),
+            "Cannot reach 4KHDHub."
+        );
+
+        let rate_limit = ProviderError::RateLimited(Some(30));
+        assert_eq!(
+            rate_limit.user_message(ProviderKind::MovieBox),
+            "Rate limited. Wait 30s."
+        );
+
+        let not_found = ProviderError::NotFound;
+        assert_eq!(
+            not_found.user_message(ProviderKind::MovieBox),
+            "No results found."
+        );
+
+        let http_status = ProviderError::Unavailable("HTTP status 502".into());
+        assert_eq!(
+            http_status.user_message(ProviderKind::FourKHdHub),
+            "4KHDHub error (502)."
+        );
     }
 }

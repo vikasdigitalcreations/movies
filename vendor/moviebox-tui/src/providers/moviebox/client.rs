@@ -89,7 +89,6 @@ impl MovieBoxClient {
     }
 
     pub async fn ensure_session(&self) -> Result<String, ScraperError> {
-        // Fast path: valid in-memory session
         if let Some(session) = self
             .session
             .read()
@@ -101,7 +100,6 @@ impl MovieBoxClient {
             }
         }
 
-        // Cache path: valid persisted session
         if let Some(persisted) = load_persisted_session() {
             if persisted.is_valid() {
                 let mut write_guard = self.session.write().unwrap_or_else(|e| e.into_inner());
@@ -110,10 +108,8 @@ impl MovieBoxClient {
             }
         }
 
-        // Single-flight lock: serialize concurrent guest logins
         let _guard = self.init_lock.lock().await;
 
-        // Double check after acquiring lock
         if let Some(session) = self
             .session
             .read()

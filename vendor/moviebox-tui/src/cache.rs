@@ -249,7 +249,7 @@ pub fn get_provider_stream_path(
 ) -> PathBuf {
     let mut path = get_provider_cache_dir(provider, "streams");
     let schema = if provider == ProviderKind::FourKHdHub {
-        "v3_"
+        "v4_"
     } else {
         ""
     };

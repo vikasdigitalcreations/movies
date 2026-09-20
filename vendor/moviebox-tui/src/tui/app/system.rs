@@ -654,12 +654,17 @@ impl App {
                 if msg.starts_with("Error:") {
                     log::error!("{msg}");
                     let body = msg.trim_start_matches("Error:").trim();
-                    let title = if body.starts_with("4KHDHub") {
-                        "4KHDHub Stream Unavailable"
+                    let (title, clean_body) = if let Some(rest) = body
+                        .strip_prefix("4KHDHub:")
+                        .or_else(|| body.strip_prefix("4KHDHub"))
+                    {
+                        let trimmed = rest.trim_start_matches(':').trim();
+                        ("4KHDHub Stream Unavailable", trimmed)
                     } else {
-                        "Operation failed"
+                        ("Operation failed", body)
                     };
-                    self.state.notify(NotificationKind::Error, title, body);
+                    self.state
+                        .notify(NotificationKind::Error, title, clean_body);
                 } else {
                     self.state.set_status_default(msg);
                 }

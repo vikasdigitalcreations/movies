@@ -187,7 +187,10 @@ pub fn parse_releases(
                     label,
                     resolver_url: href.to_string(),
                     headers: Vec::new(),
-                    direct_file: !href.contains("hubcloud.") && !href.contains("hubdrive."),
+                    direct_file: !href.contains("hubcloud.")
+                        && !href.contains("hubdrive.")
+                        && !href.contains("greenmotors.")
+                        && !href.contains("greenmountmotors."),
                 })
             })
             .collect::<Vec<_>>();

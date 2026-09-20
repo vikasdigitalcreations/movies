@@ -649,35 +649,18 @@ impl AppState {
                 return true;
             }
             let is_playback = |s: &str| {
-                s.eq_ignore_ascii_case("Playback")
-                    || s.eq_ignore_ascii_case("Preparing playback")
-                    || s.eq_ignore_ascii_case("Opening Player")
-                    || s.eq_ignore_ascii_case("Playback Cancelled")
-                    || s.eq_ignore_ascii_case("Playback unavailable")
-                    || s.to_lowercase().contains("player")
+                let lower = s.to_lowercase();
+                lower.contains("playback")
+                    || lower.contains("player")
+                    || lower.contains("stream")
+                    || lower.contains("mpv")
             };
-            let is_download = |s: &str| {
-                s.eq_ignore_ascii_case("Download")
-                    || s.eq_ignore_ascii_case("Preparing download")
-                    || s.eq_ignore_ascii_case("Download Started")
-                    || s.eq_ignore_ascii_case("Download complete")
-                    || s.eq_ignore_ascii_case("Cancelling download")
-                    || s.eq_ignore_ascii_case("Download failed")
-                    || s.to_lowercase().contains("download")
-            };
+            let is_download = |s: &str| s.to_lowercase().contains("download");
             let is_update = |s: &str| {
-                s.eq_ignore_ascii_case("Updates")
-                    || s.eq_ignore_ascii_case("Checking for updates")
-                    || s.eq_ignore_ascii_case("Up to date")
-                    || s.eq_ignore_ascii_case("Update check failed")
-                    || s.eq_ignore_ascii_case("Homebrew Upgrade")
+                let lower = s.to_lowercase();
+                lower.contains("update") || lower.contains("upgrade")
             };
-            let is_cache = |s: &str| {
-                s.eq_ignore_ascii_case("Cache")
-                    || s.eq_ignore_ascii_case("Clearing Cache")
-                    || s.eq_ignore_ascii_case("Cache Cleared")
-                    || s.eq_ignore_ascii_case("Cache Clear Failed")
-            };
+            let is_cache = |s: &str| s.to_lowercase().contains("cache");
             (is_playback(a) && is_playback(b))
                 || (is_download(a) && is_download(b))
                 || (is_update(a) && is_update(b))
@@ -1636,6 +1619,14 @@ mod tests {
         assert_eq!(state.notifications.len(), 1);
         assert_eq!(state.notifications[0].title, "Opening Player");
 
+        state.notify(
+            crate::tui::overlay::NotificationKind::Error,
+            "4KHDHub Stream Unavailable",
+            "Mirrors dead or expired.",
+        );
+        assert_eq!(state.notifications.len(), 1);
+        assert_eq!(state.notifications[0].title, "4KHDHub Stream Unavailable");
+        assert_eq!(state.notifications[0].message, "Mirrors dead or expired.");
         state.notify(
             crate::tui::overlay::NotificationKind::Info,
             "Preparing download",

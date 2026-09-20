@@ -125,7 +125,14 @@ impl ColorSupport {
             if std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()) {
                 return ColorSupport::NoColor;
             }
-            if std::env::var("WT_SESSION").is_ok() {
+            if std::env::var("WT_SESSION").is_ok()
+                || std::env::var("WEZTERM_EXECUTABLE").is_ok()
+                || std::env::var("ALACRITTY_WINDOW_ID").is_ok()
+                || std::env::var("TILIX_ID").is_ok()
+                || std::env::var("VTE_VERSION")
+                    .ok()
+                    .is_some_and(|v| is_vte_version_truecolor(&v))
+            {
                 return ColorSupport::Truecolor;
             }
             let colorterm = std::env::var("COLORTERM").unwrap_or_default();
@@ -143,6 +150,10 @@ impl ColorSupport {
             ColorSupport::NoColor => "No Color (Monochrome)",
         }
     }
+}
+
+pub(crate) fn is_vte_version_truecolor(vte_version: &str) -> bool {
+    vte_version.parse::<u32>().ok().is_some_and(|v| v >= 3600)
 }
 
 pub(crate) fn classify_terminal(colorterm: &str, term: &str, term_program: &str) -> ColorSupport {
@@ -165,14 +176,7 @@ pub(crate) fn classify_terminal(colorterm: &str, term: &str, term_program: &str)
         || term_program == "vscode"
         || term_program == "ghostty"
         || term_program == "konsole"
-        || term_program == "xfce4-terminal"
-        || std::env::var("VTE_VERSION")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .is_some_and(|v| v >= 3600)
-        || std::env::var("WEZTERM_EXECUTABLE").is_ok()
-        || std::env::var("ALACRITTY_WINDOW_ID").is_ok()
-        || std::env::var("TILIX_ID").is_ok();
+        || term_program == "xfce4-terminal";
     let basic =
         term == "dumb" || term == "linux" || term.contains("fbterm") || term.starts_with("vt");
     let apple_term = term.contains("apple") || term_program == "apple_terminal";
@@ -1092,17 +1096,10 @@ mod tests {
 
     #[test]
     fn vte_version_threshold_respects_truecolor_boundary() {
-        unsafe {
-            std::env::set_var("VTE_VERSION", "3599");
-        }
-        assert_ne!(classify_terminal("", "xterm", ""), ColorSupport::Truecolor);
-        unsafe {
-            std::env::set_var("VTE_VERSION", "3600");
-        }
-        assert_eq!(classify_terminal("", "xterm", ""), ColorSupport::Truecolor);
-        unsafe {
-            std::env::remove_var("VTE_VERSION");
-        }
+        assert!(!is_vte_version_truecolor("3599"));
+        assert!(is_vte_version_truecolor("3600"));
+        assert!(is_vte_version_truecolor("4000"));
+        assert!(!is_vte_version_truecolor("invalid"));
     }
 
     #[test]

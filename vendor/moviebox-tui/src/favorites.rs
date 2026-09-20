@@ -19,7 +19,7 @@ impl FavoriteItem {
         let title = if title.trim().is_empty() {
             details.title.clone()
         } else {
-            title
+            title.to_string()
         };
         let stype = if details.is_series() { 2 } else { 1 };
         let release_year = details.year.clone().unwrap_or_default();

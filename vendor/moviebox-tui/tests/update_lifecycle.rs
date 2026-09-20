@@ -426,9 +426,113 @@ async fn test_update_progress_message_tracking() {
         "Downloading binary...".to_string(),
     ))
     .await;
-
     assert_eq!(
         app.state().update_progress_msg.as_deref(),
         Some("Downloading binary...")
     );
+}
+
+#[tokio::test]
+async fn test_update_modal_rendered_symmetry_and_exact_height() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut app = App::new();
+    let notes = "### Highlights\n- Feature One\n- Feature Two\n- Feature Three";
+    app.state_mut().update_available = Some(("0.1.21".to_string(), notes.to_string()));
+
+    for (w, h) in [(80, 24), (85, 26), (120, 30)] {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                app.draw(frame);
+            })
+            .unwrap();
+
+        let area = Rect::new(0, 0, w, h);
+        let layout = update_modal_layout(area, notes);
+        let buffer = terminal.backend().buffer();
+
+        let top_border_y = layout.popup_area.y;
+        let bottom_border_y = layout.popup_area.y + layout.popup_area.height - 1;
+
+        let top_cell = &buffer[(layout.popup_area.x, top_border_y)];
+        assert!(
+            top_cell.symbol() == "╭" || top_cell.symbol() == "+" || top_cell.symbol() == "┌",
+            "expected top corner, got {:?} at ({}, {}) in {}x{}",
+            top_cell.symbol(),
+            layout.popup_area.x,
+            top_border_y,
+            w,
+            h
+        );
+
+        let bottom_cell = &buffer[(layout.popup_area.x, bottom_border_y)];
+        assert!(
+            bottom_cell.symbol() == "╰"
+                || bottom_cell.symbol() == "+"
+                || bottom_cell.symbol() == "└",
+            "expected bottom corner, got {:?} at ({}, {}) in {}x{}",
+            bottom_cell.symbol(),
+            layout.popup_area.x,
+            bottom_border_y,
+            w,
+            h
+        );
+
+        let button_row = layout.button_row_y;
+        assert_eq!(button_row, bottom_border_y - 2);
+
+        let mut btn_line = String::new();
+        for x in layout.popup_area.x + 1..layout.popup_area.x + layout.popup_area.width - 1 {
+            btn_line.push(
+                buffer[(x, button_row)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            );
+        }
+        assert!(btn_line.contains("[u] Update") || btn_line.contains("[b] Copy"));
+
+        let padding_below_buttons_y = bottom_border_y - 1;
+        let mut pad_bottom_line = String::new();
+        for x in layout.popup_area.x + 1..layout.popup_area.x + layout.popup_area.width - 1 {
+            pad_bottom_line.push(
+                buffer[(x, padding_below_buttons_y)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            );
+        }
+        assert!(pad_bottom_line.trim().is_empty());
+
+        let padding_above_installed_y = top_border_y + 1;
+        let mut pad_top_line = String::new();
+        for x in layout.popup_area.x + 1..layout.popup_area.x + layout.popup_area.width - 1 {
+            pad_top_line.push(
+                buffer[(x, padding_above_installed_y)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            );
+        }
+        assert!(pad_top_line.trim().is_empty());
+
+        let installed_y = top_border_y + 2;
+        let mut installed_line = String::new();
+        for x in layout.popup_area.x + 1..layout.popup_area.x + layout.popup_area.width - 1 {
+            installed_line.push(
+                buffer[(x, installed_y)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            );
+        }
+        assert!(installed_line.contains("Installed:") && installed_line.contains("Latest:"));
+    }
 }

@@ -1,0 +1,25 @@
+name: Duplicate Issue Detection
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  similarity:
+    runs-on: ubuntu-latest
+    if: "!github.event.issue.pull_request"
+    steps:
+      - name: Check issue similarity
+        uses: actions-cool/issues-similarity@v1
+        with:
+          filter-threshold: 0.75
+          title-threshold: 0.85
+          comment: |
+            Potential duplicate detected: #{number}.
+
+            Please review that issue to check if your problem or suggestion has already been addressed.
+          labels: duplicate
+          close-issue: false

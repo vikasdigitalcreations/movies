@@ -9,7 +9,7 @@ pub use tv as m3u;
 
 pub use models::{
     AudioTrackOption, CatalogItem, Episode, MediaDetails, MediaType, PlaybackSource, ProviderError,
-    ProviderKind, ProviderMediaId, Release, Season, SourceMirror, SubtitleOption,
+    ProviderKind, ProviderMediaId, Release, ResolutionIntent, Season, SourceMirror, SubtitleOption,
 };
 use serde::{Deserialize, Serialize};
 

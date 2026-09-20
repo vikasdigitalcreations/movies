@@ -440,7 +440,10 @@ async fn test_live_fourkhdhub_movie_resolution() {
     for release in &releases {
         println!("Attempting resolve for: {}", release.filename);
         let start = std::time::Instant::now();
-        match client.resolve_release(release).await {
+        match client
+            .resolve_release(release, moviebox_tui::providers::ResolutionIntent::Playback)
+            .await
+        {
             Ok(source) => {
                 println!(
                     "Resolved in {:?}: {} [{}]",
@@ -488,7 +491,10 @@ async fn test_live_fourkhdhub_game_of_thrones_resolution() {
             release.filename
         );
         let start = std::time::Instant::now();
-        match client.resolve_release(release).await {
+        match client
+            .resolve_release(release, moviebox_tui::providers::ResolutionIntent::Playback)
+            .await
+        {
             Ok(source) => {
                 println!(
                     "SUCCESS in {:?}: {} [{}]",

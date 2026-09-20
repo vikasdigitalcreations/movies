@@ -24,9 +24,10 @@ Tracked here so future work and issue reports reference the same facts.
   `rustls-platform-verifier` initialization panic reported for v0.1.12 is not in
   the v0.1.13 dependency graph, but the upstream report remains open until a real
   Termux launch is observed.
+- **Windows 11 Smart App Control (SAC) restricts untrusted web downloads.** Unsigned binaries downloaded via web browsers are tagged with `ZoneId=3` (Mark of the Web), causing Windows 11 SAC to block launch without a standard "Run anyway" button. The official installer (`install.ps1`) strips this tag automatically using `Unblock-File`. For manual ZIP downloads, users must unblock via file properties or `Unblock-File moviebox-tui.exe`.
 
 ## Verification
 
-- Automated testing is enforced via `cargo test --all-features --locked` covering 400+ unit and integration tests across 11 test suites (see [`docs/testing.md`](testing.md)). The count is updated when tests change; it does not replace real-player and real-device verification.
+- Automated testing is enforced via `cargo test --all-features --locked` covering 447 unit and integration tests across 12 test suites (see [`docs/testing.md`](testing.md)). The count is updated when tests change; it does not replace real-player and real-device verification.
 - Static correctness is enforced by strict compiler type checking, the lint gate (`cargo clippy --all-targets --all-features --locked -- -D warnings`), formatting (`cargo fmt --check`), dependency vulnerability scanning (`cargo audit`), and packaging verification (`cargo package --locked`).
 - Runtime and platform-specific behavior (terminal resize, focus handling, external player launch, and Termux chooser) are verified through the release checklist in [`release-checklist.md`](release-checklist.md).

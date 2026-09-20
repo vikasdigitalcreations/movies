@@ -33,7 +33,7 @@ impl WatchHistoryItem {
         let title = if title.trim().is_empty() {
             details.title.clone()
         } else {
-            title
+            title.to_string()
         };
         let stype = if details.is_series() { 2 } else { 1 };
         let release_year = details.year.clone().unwrap_or_default();
@@ -382,7 +382,7 @@ impl HistoryManager {
             if let Some(t) = title {
                 let clean_i = crate::providers::moviebox::clean_moviebox_title(&i.title);
                 let clean_t = crate::providers::moviebox::clean_moviebox_title(t);
-                if !clean_i.is_empty() && clean_i.eq_ignore_ascii_case(&clean_t) {
+                if !clean_i.is_empty() && clean_i.eq_ignore_ascii_case(clean_t) {
                     if i.stype == 1 {
                         return true;
                     }

@@ -81,7 +81,7 @@ impl App {
                     let clean_title = if query.starts_with('/') {
                         raw_title
                     } else {
-                        crate::providers::moviebox::clean_moviebox_title(&raw_title)
+                        crate::providers::moviebox::clean_moviebox_title(&raw_title).to_string()
                     };
 
                     if query.starts_with('/') {
@@ -332,7 +332,7 @@ impl App {
                         self.state.search_results.iter_mut().find(|r| r.id == id)
                     {
                         if existing.title.is_empty() {
-                            existing.title = clean_title;
+                            existing.title = clean_title.to_string();
                             existing.stype = stype;
                             existing.release_year = release_year;
                             existing.cover_url = cover_url;
@@ -365,7 +365,7 @@ impl App {
                     if !id.is_empty() {
                         self.state.search_results.push(SearchResult {
                             id,
-                            title: clean_title,
+                            title: clean_title.to_string(),
                             stype,
                             release_year,
                             cover_url,
@@ -1363,10 +1363,12 @@ impl App {
                             .await;
 
                         if !blocked_addons.is_empty() {
-                            sender.send(Action::SetStatus(format!(
-                                "Warning: {} streams blocked (raw torrents). Only HTTP streams are supported.",
-                                blocked_addons.join(", ")
-                            ))).ok();
+                            sender
+                                .send(Action::SetStatus(format!(
+                                    "Blocked {} torrent streams. HTTP only.",
+                                    blocked_addons.join(", ")
+                                )))
+                                .ok();
                         }
 
                         if !releases.is_empty() {
@@ -1764,12 +1766,17 @@ impl App {
                             let mut exists = false;
                             for i in entry.iter_mut() {
                                 let i_link = i.direct_url().unwrap_or("");
-                                let base_link = link.split('?').next().unwrap_or(link);
-                                let i_base_link = i_link.split('?').next().unwrap_or(i_link);
+                                let same_url = if context.provider == ProviderKind::MovieBox {
+                                    let base_link = link.split('?').next().unwrap_or(link);
+                                    let i_base_link = i_link.split('?').next().unwrap_or(i_link);
+                                    !base_link.is_empty() && base_link == i_base_link
+                                } else {
+                                    !link.is_empty() && link == i_link
+                                };
+                                let same_filename =
+                                    !item.filename.is_empty() && item.filename == i.filename;
 
-                                if (!base_link.is_empty() && base_link == i_base_link)
-                                    || (!item.filename.is_empty() && item.filename == i.filename)
-                                {
+                                if same_url || same_filename {
                                     if !item.mirrors.is_empty() && i.mirrors.is_empty() {
                                         i.mirrors = item.mirrors.clone();
                                     }
@@ -2001,5 +2008,80 @@ impl App {
             _ => return None,
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::models::{ProviderKind, Release, SourceMirror};
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_fourkhdhub_releases_not_collapsed_by_query_id() {
+        let mut app = App::new();
+        let subject_id = "/obsession-movie-7327/".to_string();
+        app.state.active_subject_id = Some(subject_id.clone());
+        app.state.active_provider = ProviderKind::FourKHdHub;
+        app.state.selected_season = 0;
+        app.state.selected_episode = 0;
+        app.state.stream_pool.insert(
+            subject_id.clone(),
+            crate::tui::state::SubjectStreamPool {
+                episode_index: HashMap::new(),
+                available_resolutions: Vec::new(),
+                ..Default::default()
+            },
+        );
+
+        let raw_list = vec![
+            Release {
+                provider: ProviderKind::FourKHdHub,
+                filename: "Obsession (2025) 2160p UHD BluRay REMUX".into(),
+                quality: Some("2160p".into()),
+                codec: Some("HEVC".into()),
+                language: None,
+                size_bytes: Some(50_000_000_000),
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: "Download HubCloud".into(),
+                    resolver_url: "https://greenmotors.club/?id=id1".into(),
+                    headers: vec![],
+                    direct_file: false,
+                }],
+                resource_id: None,
+            },
+            Release {
+                provider: ProviderKind::FourKHdHub,
+                filename: "Obsession (2025) 1080p BluRay REMUX AVC".into(),
+                quality: Some("1080p".into()),
+                codec: Some("AVC".into()),
+                language: None,
+                size_bytes: Some(25_000_000_000),
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: "Download HubCloud".into(),
+                    resolver_url: "https://greenmotors.club/?id=id2".into(),
+                    headers: vec![],
+                    direct_file: false,
+                }],
+                resource_id: None,
+            },
+        ];
+
+        let context = app.request_context();
+        app.handle_requests(Action::EpisodeStreamsReady(
+            context,
+            app.state.active_resource_request,
+            subject_id,
+            0,
+            0,
+            raw_list,
+        ))
+        .await;
+
+        assert_eq!(app.state.selected_resources.len(), 2);
     }
 }

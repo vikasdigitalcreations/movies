@@ -2,7 +2,7 @@ use crate::core::stream_pool::{drop_notice_mirrors, merge_releases, pick_for_qua
 use crate::core::types::*;
 use crate::state::AppState;
 use moviebox_tui::providers::moviebox::adapt::moviebox_resource_item_to_release;
-use moviebox_tui::providers::{ProviderKind, Release, ReleaseProvider};
+use moviebox_tui::providers::{ProviderKind, Release, ReleaseProvider, ResolutionIntent};
 use std::time::Duration;
 use moviebox_tui::service::MovieBoxService;
 use tauri::State;
@@ -151,7 +151,7 @@ pub async fn alternate_source(state: State<'_, AppState>, title: String, year: O
     }
     order.extend(rels.into_iter());
     for rel in order.iter().take(4) {
-        if let Ok(Ok(src)) = tokio::time::timeout(Duration::from_secs(18), fourk.resolve_release(rel)).await {
+        if let Ok(Ok(src)) = tokio::time::timeout(Duration::from_secs(18), fourk.resolve_release(rel, ResolutionIntent::Playback)).await {
             let height = rel.resolution_u64();
             return Ok(StreamDto {
                 label: format!("{height}p"),

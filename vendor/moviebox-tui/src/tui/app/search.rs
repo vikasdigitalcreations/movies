@@ -538,7 +538,7 @@ impl App {
                     stored_metrics.recent_rating.or(metrics.recent_rating);
                 stored_metrics.popularity = stored_metrics.popularity.or(metrics.popularity);
                 if existing.title.is_empty() {
-                    existing.title = clean_title;
+                    existing.title = clean_title.to_string();
                     existing.stype = stype;
                     existing.release_year = release_year;
                     existing.cover_url = cover_url;
@@ -572,7 +572,7 @@ impl App {
                 self.state.browse_metrics.insert(id.clone(), metrics);
                 self.state.search_results.push(SearchResult {
                     id,
-                    title: clean_title,
+                    title: clean_title.to_string(),
                     stype,
                     release_year,
                     cover_url,

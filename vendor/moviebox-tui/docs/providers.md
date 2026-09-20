@@ -76,7 +76,10 @@ Adding a new streaming or BDIX provider to MovieBox TUI takes 3 simple steps:
 - `client.rs::resolve_release` resolves release mirrors concurrently using bounded-concurrency probing (`select_ok` in batches of 3) with a 3.5s per-probe timeout.
 - Direct links undergo automatic path percent-encoding normalization (`validate_playback_url`) to handle filenames containing unencoded spaces, brackets, and special characters.
 - Preflight probes issue a bounded range probe (`Range: bytes=0-8191`) and inspect response bodies for expired mirror errors (`"Failed to extract link"`, `"Token Expired"`, `"404"`) to fail fast on expired torrents.
-- `hubcloud.rs` scores and prioritizes candidate streams (Cloudflare R2 / S3 / Seekable Streams → Storage → PixelDrain API → Google UserContent / Direct Attachments), automatically decoding base64 `Watch Online` mirrors (`vdplay.pages.dev/?u=...`).
+- `hubcloud.rs` scores and prioritizes candidate streams based on `ResolutionIntent`:
+  - **Playback (`ResolutionIntent::Playback`)**: Prioritizes seekable multi-connection streaming CDNs (`pixel.hubcloud.` -> Google Video CDN, Cloudflare R2, PixelDrain API) while deprioritizing single-use download workers (`workers.dev`) to prevent HTTP 403 token-burn and player authentication popups.
+  - **Download (`ResolutionIntent::Download`)**: Permits both high-speed streaming CDNs and direct file download proxies for maximum throughput.
+- **Mediator Redirector Resolution**: `hubcloud.rs::resolve_greenmotors` transparently unpacks intermediate JavaScript mediator domains (`greenmotors.club`, `greenmountmotors.`) using a multi-stage decoding pipeline (double Base64, ROT13, JSON extraction) to recover downstream `hubcloud.` and `hubdrive.` mirror endpoints without requiring an external browser engine.
 - **Multilingual audio detection**: `parser.rs::detect_language` parses release titles and
   metadata for 30+ regional and international languages (Hindi, Tamil, Telugu, Kannada,
   Malayalam, Bengali, Marathi, Punjabi, Gujarati, Urdu, Japanese, Korean, Chinese, Spanish,

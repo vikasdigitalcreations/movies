@@ -42,7 +42,7 @@ impl<'a> SubjectIdentity<'a> {
 
         let clean_a = crate::providers::moviebox::clean_moviebox_title(self.title);
         let clean_b = crate::providers::moviebox::clean_moviebox_title(other.title);
-        if !clean_a.is_empty() && clean_a.eq_ignore_ascii_case(&clean_b) {
+        if !clean_a.is_empty() && clean_a.eq_ignore_ascii_case(clean_b) {
             let year_a = self.release_year.trim();
             let year_b = other.release_year.trim();
             if !year_a.is_empty() && !year_b.is_empty() {

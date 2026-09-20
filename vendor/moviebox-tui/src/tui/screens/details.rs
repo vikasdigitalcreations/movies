@@ -469,11 +469,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
     } else {
         theme.title.add_modifier(Modifier::BOLD)
     };
-    let title_w = crate::tui::text::width(&title);
+    let title_w = crate::tui::text::width(title);
     if title_w <= text_width {
-        rendered_lines.push(Line::from(vec![Span::styled(title.clone(), title_style)]));
+        rendered_lines.push(Line::from(vec![Span::styled(title, title_style)]));
     } else {
-        let wrapped_title = crate::tui::text::wrap_text(&title, text_width);
+        let wrapped_title = crate::tui::text::wrap_text(title, text_width);
         for line in wrapped_title.into_iter().take(2) {
             rendered_lines.push(Line::from(vec![Span::styled(line, title_style)]));
         }
@@ -983,7 +983,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                     } else if let Some(hist) =
                         state
                             .history
-                            .get_item(provider, subject_id, se_num, ep, Some(&title))
+                            .get_item(provider, subject_id, se_num, ep, Some(title))
                     {
                         if hist.completed {
                             theme.text_dim
@@ -1000,7 +1000,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                     let sym = if let Some(hist) =
                         state
                             .history
-                            .get_item(provider, subject_id, se_num, ep, Some(&title))
+                            .get_item(provider, subject_id, se_num, ep, Some(title))
                     {
                         if hist.completed {
                             check_sym
@@ -1016,7 +1016,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                     };
                     let progress_info = state
                         .history
-                        .get_item(provider, subject_id, se_num, ep, Some(&title))
+                        .get_item(provider, subject_id, se_num, ep, Some(title))
                         .filter(|h| !h.completed && h.is_in_progress())
                         .map(
                             |h| match (h.progress_percentage(), h.formatted_remaining()) {
@@ -1886,7 +1886,7 @@ pub fn workflow_step_ranges(
     ));
 
     let sep_len = if state.basic_terminal { 3 } else { 5 };
-    let marker_len = 2; // "> " or "› "
+    let marker_len = 2;
     let mut total_w = 0;
     for (idx, (pane, label)) in steps.iter().enumerate() {
         if idx > 0 {

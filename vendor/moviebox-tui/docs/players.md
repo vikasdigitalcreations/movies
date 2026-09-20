@@ -69,11 +69,11 @@ On Android (Termux), terminal sessions do not have access to an X11 or Wayland d
 
 - **Command-Line `mpv` (`pkg install mpv`)**: Operates in headless/audio-only mode. Video output cannot be rendered to the terminal screen and will fail or produce audio without video.
 - **External Player Intent Dispatch**: Video playback is designed to open in dedicated Android video player applications (**VLC for Android**, **Just Player**, **MX Player**, or **MPV Android APK**).
-- **Prerequisites**: Termux requires `pkg install -y termux-tools termux-am`.
-  - `termux-open` (from `termux-tools`) broadcasts an `android.intent.action.VIEW` intent to `TermuxOpenReceiver`, presenting Android's native app chooser.
-  - `termux-am` (from `termux-am`) connects directly to `termux-app`'s local Unix domain socket (`am.sock`), allowing intent parameter passing (including `User-Agent`, `Referer`, and subtitles).
-- **Actionable Mobile Diagnostics**: MovieBox-TUI parses intent dispatcher output and failure status codes, surfacing compact, player-neutral diagnostics formatted for mobile viewports:
-  - **Missing video player app**: Surfaces `No Video Player` (`Install a video player on Android.`).
-  - **Missing intent bridge / socket**: Surfaces `Termux Setup Needed` (`Run: pkg install -y termux-am`).
-  - **Headless CLI mpv**: Detects video output initialization failures and surfaces `CLI mpv Unsupported` (`Switch to Android Player in /settings.`).
+- **Prerequisites**: Termux requires `pkg install -y termux-tools`.
+  - `termux-open` (from `termux-tools`) broadcasts an `android.intent.action.VIEW` intent to `TermuxOpenReceiver`, presenting Android's native app chooser without relying on background sockets.
+  - `termux-am` (from `termux-am`) attempts to connect to `am.sock` to pass custom stream headers and subtitles. If `am.sock` is unavailable or socket connection fails, MovieBox-TUI automatically falls back to `termux-open` transparently.
+- **Actionable Mobile Diagnostics**: MovieBox-TUI parses intent dispatcher output and failure status codes, surfacing compact diagnostics formatted for mobile viewports:
+  - **Missing video player app**: Surfaces `No Player` (`Install a video player.`).
+  - **Missing intent tools**: Surfaces `Termux Setup` (`Run 'pkg install termux-tools'.`).
+  - **Headless CLI mpv**: Detects video output initialization failures and surfaces `CLI mpv` (`Switch to Android Player in /settings.`).
   - **SELinux & Exit Code 126 Protection**: On Android 10+, executing `/system/bin/am` directly from an unrooted Termux environment causes Android's system shell to call `cmd activity`, which is blocked by SELinux when executing Termux app data binaries (`Permission denied`, exit code 126). MovieBox-TUI detects Termux environments, prevents illegal system `am` invocations, preserves `LD_PRELOAD` for Termux applet compatibility, strictly gates system `am` checks behind `target_os = "android"` (preventing GNU Automake collisions on desktop Linux), and surfaces actionable remediation notifications.

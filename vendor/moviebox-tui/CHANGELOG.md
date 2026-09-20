@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.1.21] - 2026-09-19
+
+### Added
+- **Automated Issue Quality, Version Validation, and Duplicate Management**:
+  - Modernized GitHub issue templates (`.github/ISSUE_TEMPLATE/`) to link directly to official mdBook documentation site guides (`mesamirh.github.io/MovieBox-Tui/`).
+  - Added `.github/workflows/incomplete-issue.yml` with semver release validation checking user versions against latest GitHub releases and printing platform upgrade commands.
+  - Implemented automated OS labeling (`os: android`, `os: linux`, `os: macos`, `os: windows`), title sanity validation, and Termux player setup guidance.
+  - Added automatic removal of `needs-info` and `stale` labels when the issue author provides responses.
+  - Added `.github/workflows/duplicate-detector.yml` using `actions-cool/issues-similarity` to flag and cross-reference duplicate issue submissions.
+  - Added `.github/workflows/stale.yml` to automatically close abandoned `needs-info` issues after 7 days of inactivity.
+
+### Security
+- **Dependency Advisory Remediation**:
+  - Updated `rustls` to `0.23.45` and `rustls-webpki` to `0.103.15`, resolving security advisory `RUSTSEC-2026-0285` (TLS 1.3 handshake boundary handling).
+
+### Performance
+- **TUI Landing Frame Latency & Allocation Pruning**:
+  - Reduced landing frame draw latency from 28.95 µs to 23.03 µs (-20.4%) by eliminating per-frame heap allocations (`logo_text: &'static str`, zero-copy `&rows.rects` borrowing) and caching search result metrics across unscrollable viewports.
+- **Zero-Copy Title Normalization (`clean_moviebox_title`)**:
+  - Converted `clean_moviebox_title` from an allocating `String` generator to a pure zero-copy slice parser (`&str -> &str`), replacing allocating `.to_lowercase()` substring searches with in-place ASCII case-insensitive matching (`rfind_ignore_ascii_case`).
+  - Achieved sub-microsecond parsing latency: 191.43 ns/op over 10,000 operations with zero heap allocations.
+### Changed
+- **Windows Installer Terminal Lifecycle and Environment Propagation**:
+  - Replaced process-terminating `exit` statements with scoped `return` in `install.ps1`, preventing host terminal windows and tabs from abruptly closing during piped `iex` execution or on preflight warnings.
+  - Added Win32 `WM_SETTINGCHANGE` environment broadcast via `SendMessageTimeout`, forcing Windows Explorer and newly launched terminals to immediately refresh `PATH` without requiring a system sign-out.
+  - Removed buffer-wiping `[Console]::Clear()` from installer header initialization to preserve user terminal diagnostic history.
+  - Stripped Unix `$` shell prompt prefix from streaming launch guidance and added direct binary execution fallback path (`& "$ExePath"`) for existing terminal windows.
+- **Concise Error and Status Messaging**:
+  - Streamlined `ProviderError::user_message` to output compact, high-signal status messages under 40 characters for mobile and compact viewports.
+  - Replaced sprawling raw socket errors and leaked endpoint URLs with clear failure reasons (`CircleFTP unreachable: requires BDIX network.`, `MovieBox timed out.`, `Cannot reach 4KHDHub.`, `No results found.`).
+  - Shortened 4KHDHub playback and download resolution timeout messages to fit single-row status lines (`4KHDHub timed out.`).
+  - Sanitized subtitle download/write error strings to prevent raw filesystem/network error leaks.
+  - Compacted addon torrent stream warning to `Blocked {} torrent streams. HTTP only.`.
+  - Streamlined player crash fallback diagnostic to `Player exited (code {code}).`.
+### Fixed
+- **In-Flight Notification Replacement & Compact Stream Errors**:
+  - Generalized notification category matching in `AppState::notify` across stream and playback domains, ensuring stream resolution errors replace in-flight "Preparing playback" toasts in-place instead of creating visual overlapping.
+  - Compacted 4KHDHub stream error messages from 135-character redundant text blocks to concise messages under 30 characters (`Mirrors dead or expired.`).
+- **4KHDHub Mediator Redirector Resolution**:
+  - Implemented automatic mediator unpacker in `src/providers/fourkhdhub/hubcloud.rs` supporting `greenmotors.club` and `greenmountmotors.` intermediate redirector domains.
+  - Implemented multi-stage decoding pipeline (double Base64, ROT13, JSON extraction) to transparently recover downstream HubCloud and HubDrive mirror endpoints without external browser dependencies.
+  - Excluded mediator domains from direct file classification in `parser.rs` and added mediator domain rejection to `validate_playback_url`.
+- **Playback vs Download Mirror Resolution Separation**:
+  - Introduced `ResolutionIntent` (`Playback` vs `Download`) in `src/providers/models.rs` and wired through `resolve_release`.
+  - For playback, prioritized seekable multi-connection video CDNs (`pixel.hubcloud.` -> Google Video CDN, Cloudflare R2, PixelDrain API) while deprioritizing single-use download workers (`workers.dev`).
+  - Added `downloadQuotaExceeded` and `Access Denied` error body detection in `FourKHdHubClient::preflight` to instantly reject exhausted worker links and prevent IINA HTTP authentication dialogs.
+- **4KHDHub Multi-Stream Deduplication**:
+  - Fixed an issue where 4KHDHub stream releases were prematurely collapsed into a single item by scoping query-string-insensitive URL deduplication strictly to MovieBox CDN streams.
+  - Upgraded 4KHDHub stream cache schema to `v4_` to invalidate stale single-stream caches.
+- **Terminal Color Support Environment Isolation**:
+  - Scoped process environment lookups (`ALACRITTY_WINDOW_ID`, `WEZTERM_EXECUTABLE`, `TILIX_ID`, `VTE_VERSION`) strictly to `ColorSupport::current()` rather than the pure `classify_terminal` helper.
+  - Eliminated host environment variable leakage where running tests inside Alacritty or WezTerm falsely forced 256-color and basic terminals to report Truecolor support.
+  - Extracted pure `is_vte_version_truecolor` validator, eliminating non-thread-safe `std::env::set_var` test mutations.
+- **Android Termux Intent Opener Resiliency & Socket Fallback**:
+  - Implemented multi-opener resolution in `src/player.rs` returning ordered candidate commands (`termux-am` → `termux-open` → `termux-open-url`).
+  - Added automatic in-flight fallback in `src/tui/app/playback.rs`: if `termux-am` exits with `am.sock` / socket connection failure on Android 12+, MovieBox-TUI automatically retries with `termux-open` without halting playback.
+  - Replaced long and inaccurate `"Run: pkg install -y termux-am"` notifications with concise mobile-formatted messages under 32 characters (`Termux Setup: Run 'pkg install termux-tools'.`, `No Player: Install a video player.`, `CLI mpv: Switch to Android Player in /settings.`).
+- **tmux Poster Image Passthrough**:
+  - Replaced the hard-coded `$TMUX` detection block in `src/tui/terminal.rs` with an outer terminal graphics capability probe (`GHOSTTY_RESOURCES_DIR`, `KITTY_WINDOW_ID`, `WEZTERM_EXECUTABLE`, `ITERM_SESSION_ID`, `ALACRITTY_LOG`, `ALACRITTY_WINDOW_ID`, `foot`).
+  - Enabled automatic poster graphics queries and DCS passthrough inside `tmux` sessions running within Ghostty, Kitty, WezTerm, iTerm2, foot, and Alacritty, eliminating empty "No Art" placeholders.
+- **Legacy Windows Console Compatibility (Windows 8.1 & conhost)**:
+  - Eliminated unsupported `underline-color` control codes from ratatui crossterm backend, restoring full TUI rendering on Windows 8.1 and legacy Windows console hosts where `SetUnderlineColor` causes draw frame errors.
+  - Pruned unused `all-widgets`, `widget-calendar`, and `macros` feature dependencies from ratatui build graph.
+- **Update Modal Geometry & Symmetrical Border Padding**:
+  - Eliminated unnecessary dead vertical gap below action buttons in "Update Available" dialog by calculating exact rendered line heights (`update_modal_layout_with_env`) accounting for installation environment notices.
+  - Symmetrized vertical padding with balanced 1-row margins above the version header and below the action button row, eliminating bottom-heavy content displacement.
+  - Aligned inner horizontal margins to a uniform 2-column padding on both left and right borders, preventing premature right-side text truncation.
+  - Synchronized mouse click hitbox (`button_row_y`) with rendered action buttons across all package environments (DirectReplace, Homebrew, Termux, Flatpak, Snap).
+
 ## [0.1.20] - 2026-09-14
 
 ### Added
@@ -496,7 +565,7 @@
 ### Removed
 - **Poster Graphics Configuration & Halfblocks Engine**:
   - Removed Unicode Halfblocks poster engine (`▀`/`▄`), eliminating low-resolution cell distortion, font scanlines, and terminal redraw lag during list scrolling.
-  - Removed redundant `Poster Graphics` toggle from Settings Hub (`/settings` $\to$ Appearance) and `config.json`, delegating terminal graphics strictly to automatic native GPU protocol detection (Kitty, Sixel, iTerm2).
+  - Removed redundant `Poster Graphics` toggle from Settings Hub (`/settings` → Appearance) and `config.json`, delegating terminal graphics strictly to automatic native GPU protocol detection (Kitty, Sixel, iTerm2).
 
 ### Fixed
 - **Cross-Platform Handle Safety & Silent Failure Elimination**:
@@ -536,7 +605,7 @@
   - Streamlined `/config` as a direct alias for `/settings`.
 
 - **Pruned Redundant Theme Slash Command**:
-  - Removed standalone `/theme` slash command, parser routing, and auto-suggestions; theme selection and visual palette swatches are managed directly within the interactive Settings Hub (`/settings` $\to$ Appearance $\to$ Theme).
+  - Removed standalone `/theme` slash command, parser routing, and auto-suggestions; theme selection and visual palette swatches are managed directly within the interactive Settings Hub (`/settings` → Appearance → Theme).
 - **Discover Categories Landing Card UX**:
 - **Clean Segmented Landing Deck Header Styling**:
   - Replaced crowded decorative star (`★`) and bracket (`[ ]`) glyphs with a clean, segmented tab bar header (`Continue Watching │ Favorites (Tab)`).

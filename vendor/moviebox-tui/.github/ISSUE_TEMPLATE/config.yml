@@ -1,1 +1,14 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Documentation & Known Issues
+    url: https://mesamirh.github.io/MovieBox-Tui/known-issues.html
+    about: Review documented workarounds, requirements, and known issues.
+  - name: Android / Termux Setup Guide
+    url: https://mesamirh.github.io/MovieBox-Tui/cross-platform.html#os-notes
+    about: Read requirements for running on Android via Termux.
+  - name: Media Players & Troubleshooting
+    url: https://mesamirh.github.io/MovieBox-Tui/players.html
+    about: External media player setup, requirements, and supported features.
+  - name: GitHub Discussions
+    url: https://github.com/mesamirh/MovieBox-Tui/discussions
+    about: Ask questions, request setup assistance, or discuss configurations.
