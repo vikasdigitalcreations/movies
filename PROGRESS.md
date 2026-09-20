@@ -4,9 +4,8 @@ Last updated: 2026-09-20
 
 ## Current status
 
-v1.1.1 is the published build. Since it shipped, the work on this branch answers a
-provider failure that happened mid-session and would otherwise have left the app unable
-to play anything.
+v1.2.0 is published and installed on this PC. It answers a provider failure that
+happened mid-session and would otherwise have left the app unable to play anything.
 
 **MovieBox has stopped serving video.** At 14:53 on 2026-09-20 a survey of 17 popular
 titles scored 15 playable; at 15:40 the same survey, on the same vendored version,
@@ -37,16 +36,17 @@ then 4KHDHub, then Stremio addons the user installs -- and with MovieBox dark, D
 - **Stremio addons (unreleased)** -- Settings -> Extra sources; five commands; Cinemeta bridges MovieBox ids to IMDb ids. Magnet links are dropped.
 - **Search rescue (unreleased)** -- a first page with no results is retried once with one extra word, which recovers titles like Barbie that MovieBox carries but will not return for the bare name.
 - **Measurement tooling (unreleased)** -- `probe survey|mirror|fourkplay|fourkmirrors|rescue|addons` and the `failover_health` test, so "it stopped playing" is answered with numbers in about a minute.
+- **Verification** (2026-09-20, installed v1.2.0 over CDP, MovieBox dark): the update feed parses with no BOM and points at 1.2.0; `system_info` reports 1.2.0; `streams` returned four 4KHDHub releases in 10.6 s, best 2160p and downloadable; "Start over" played Inception at 2160p with the clock advancing 0:33 -> 0:48 over fifteen seconds; Back landed on the details page and stayed there, and a second Back left it.
 - **Verification** (2026-09-20, dev app over CDP, MovieBox dark): Rust tests 14/14 and `tsc` clean; `addons_list` returns Cinemeta through real IPC; six addon guard paths (bad URL, dead host, subtitles-only addon, duplicate, removing Cinemeta, no stream addon) each fail with their own message and persist nothing; `streams` returned three 4KHDHub releases in 10.7 s; the resolved URL answered HTTP 206 as `video/x-matroska`; Details -> Play played Inception at 2160p with the clock advancing 0:25 -> 0:37 over twelve seconds.
 
 ## In progress
 
-- Nothing. The working tree is committed on `session/2026-09-20-diagnose-playback-failures`; 1.2.0 is not published yet.
+- Nothing. v1.2.0 is published and installed on this PC.
 
 ## Next
 
-1. Release this as 1.2.0 with `scripts/publish-release.ps1`. Installed copies are on
-   1.1.1, which cannot play anything while MovieBox is dark, so this matters.
+1. Send `release/MovieBox_1.2.0_x64-setup.exe` to the friend once, by hand. The copy on
+   this PC had reverted to 1.0.0, which has no updater, so assume theirs may have too.
 2. Watch whether MovieBox comes back. `cargo run --bin probe -- survey` answers it in
    about a minute; if it returns, nothing needs undoing -- it simply becomes tier one again.
 3. Find and document a working HTTP-streaming addon. The addon path is verified as far
