@@ -261,6 +261,22 @@ async fn fourk_streams(
     Ok(out)
 }
 
+/// The non-MovieBox tiers, in order, for callers outside the `streams` command
+/// (the download queue refreshing a link that died mid-transfer).
+pub async fn other_source_streams(
+    service: &MovieBoxService,
+    title: &str,
+    year: Option<&str>,
+    season: usize,
+    episode: usize,
+    preferred: u64,
+) -> Result<Vec<StreamDto>, String> {
+    if let Ok(list) = fourk_streams(service, title, year, season, episode, preferred, 4).await {
+        return Ok(list);
+    }
+    crate::commands::addons::addon_streams_for(title, year, season > 0 || episode > 0, season, episode).await
+}
+
 /// "Try another source", kept for the player's mid-playback retry.
 #[tauri::command]
 pub async fn alternate_source(state: State<'_, AppState>, title: String, year: Option<String>, season: usize, episode: usize, preferred: u64) -> CmdResult<StreamDto> {

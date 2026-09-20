@@ -317,15 +317,23 @@ impl DownloadManager {
     }
 
     async fn refresh_url(&self, t: &Task) -> Option<(String, Vec<(String, String)>)> {
-        // Signed links expire; fetch a fresh one for the same quality.
-        let pool = crate::commands::streams::collect_streams(&self.service, &t.subject_id, t.season, t.episode, t.abs_index).await.ok()?;
-        let direct: Vec<_> = pool
-            .into_iter()
-            .filter(|r| r.direct_url().map(|u| !crate::core::stream_pool::is_notice_url(u)).unwrap_or(false))
-            .collect();
-        let rel = direct.iter().find(|r| r.resolution_u64() == t.height).or_else(|| pick_for_quality(&direct, t.height))?;
-        let m = rel.mirrors.first()?;
-        Some((m.resolver_url.clone(), m.headers.clone()))
+        // Signed links expire; fetch a fresh one for the same quality. A download that
+        // started on another source has to be refreshed from that source, not MovieBox,
+        // or a worker link dying halfway would end the download instead of resuming it.
+        if let Ok(pool) = crate::commands::streams::collect_streams(&self.service, &t.subject_id, t.season, t.episode, t.abs_index).await {
+            let direct: Vec<_> = pool
+                .into_iter()
+                .filter(|r| r.direct_url().map(|u| !crate::core::stream_pool::is_notice_url(u)).unwrap_or(false))
+                .collect();
+            if let Some(rel) = direct.iter().find(|r| r.resolution_u64() == t.height).or_else(|| pick_for_quality(&direct, t.height)) {
+                if let Some(m) = rel.mirrors.first() {
+                    return Some((m.resolver_url.clone(), m.headers.clone()));
+                }
+            }
+        }
+        let alt = crate::commands::streams::other_source_streams(&self.service, &t.title, t.year.as_deref(), t.season, t.episode, t.height).await.ok()?;
+        let s = alt.iter().find(|s| s.height == t.height).or_else(|| alt.first())?;
+        Some((s.url.clone(), s.headers.clone()))
     }
 
     async fn run(self: Arc<Self>, task: Task) {
