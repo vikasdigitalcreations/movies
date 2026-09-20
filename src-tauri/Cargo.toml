@@ -1,6 +1,6 @@
 [package]
 name = "moviebox"
-version = "1.3.0"
+version = "1.3.1"
 description = "MovieBox - watch and download movies and series"
 authors = ["MovieBox"]
 edition = "2021"

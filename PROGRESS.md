@@ -4,8 +4,9 @@ Last updated: 2026-09-20
 
 ## Current status
 
-v1.3.0 adds an Adults section behind a PIN. v1.2.0 is published and installed on this PC. It answers a provider failure that
-happened mid-session and would otherwise have left the app unable to play anything.
+v1.3.1 is installed on this PC. v1.2.0 is the published release. 1.3.0 added an Adults
+section behind a PIN; 1.3.1 fixes that section's scrolling and its PIN prompt, and
+repairs the title matching that left most series with no fallback.
 
 **MovieBox has stopped serving video.** At 14:53 on 2026-09-20 a survey of 17 popular
 titles scored 15 playable; at 15:40 the same survey, on the same vendored version,
@@ -14,9 +15,15 @@ to affect only direct file links, now in place of the DASH manifests as well. A 
 token, a clean cache and the previous vendored version all behave identically, so this
 is their servers rather than our state.
 
-The app now plays through it. Streams come from three sources in order -- MovieBox,
-then 4KHDHub, then Stremio addons the user installs -- and with MovieBox dark, Details
--> Play resolves 4KHDHub and plays Inception at 2160p.
+**The outage has not lifted.** A repeat survey on 2026-09-20 evening still scored 0 of
+17 playable, 15 of them advert-only, so every play now depends on the fallbacks.
+
+The app plays through it. Streams come from three sources in order -- MovieBox, then
+4KHDHub, then Stremio addons the user installs. `probe chain` measures how far that
+gets: **14 of 20 popular titles have a playable source** (10 before the 1.3.1 matcher
+fix). The six that do not are Indian releases -- Jawan, Animal, Kalki 2898 AD, Stree 2,
+Munjya -- which 4KHDHub does not carry. That gap closes only by adding a source, not by
+tuning the matcher.
 
 ## Done
 

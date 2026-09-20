@@ -3,6 +3,7 @@ import { Lock, Search as SearchIcon, X } from "lucide-react";
 import { api, type AdultSource, type Card as CardT } from "../lib/api";
 import { Button, EmptyState, ErrorState, PageHeader, SkeletonGrid, Spinner } from "../components/ui";
 import { usePlayNow } from "../store/player";
+import { useScrollMemory } from "../lib/hooks";
 import { useApp } from "../store/app";
 
 const SOURCES: { id: AdultSource; label: string; note: string }[] = [
@@ -91,7 +92,10 @@ function EmbedView({ url, onClose }: { url: string; onClose: () => void }) {
 }
 
 export function AdultsPage() {
-  const [unlocked, setUnlocked] = useState(false);
+  // The unlock lives in the store, not here. Opening a clip leaves this page for the
+  // player, which unmounts it; a local flag would ask for the PIN again on the way back.
+  const unlocked = useApp((s) => s.adultUnlocked);
+  const setUnlocked = useApp((s) => s.setAdultUnlocked);
   const [source, setSource] = useState<AdultSource>("redgifs");
   const [query, setQuery] = useState("");
   const [typed, setTyped] = useState("");
@@ -104,6 +108,7 @@ export function AdultsPage() {
   const playNow = usePlayNow();
   const toast = useApp((s) => s.toast);
   const reqId = useRef(0);
+  const scrollRef = useScrollMemory("adults", items !== null);
 
   const load = useCallback(
     async (p: number, replace: boolean) => {
@@ -156,7 +161,7 @@ export function AdultsPage() {
   if (!unlocked) return <PinGate onPass={() => setUnlocked(true)} />;
 
   return (
-    <div>
+    <div ref={scrollRef} className="h-full overflow-y-auto px-8 pb-10 pt-8">
       <PageHeader title="Adults" subtitle="18+. Hidden behind your PIN, and never part of search or Home." />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
@@ -213,7 +218,8 @@ export function AdultsPage() {
               <button
                 key={c.id}
                 onClick={() => open(c)}
-                className="group text-left"
+                data-nav-row="grid"
+                className="group text-left outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
                 title={c.title}
                 disabled={opening !== null}
               >

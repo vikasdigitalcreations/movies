@@ -151,7 +151,23 @@ pub async fn streams(
     let is_series = season > 0 || episode > 0;
     crate::commands::addons::addon_streams_for(&title, year.as_deref(), is_series, season, episode)
         .await
-        .map_err(|_| problem.message())
+        .map_err(|_| dead_end(&problem))
+}
+
+/// What to say when all three tiers came back empty.
+///
+/// The old wording ended in "try again later", which is what sent people round the same
+/// title over and over. When the user has no addons installed there is a third tier
+/// sitting unused, and pointing at it is more use than asking them to wait.
+fn dead_end(problem: &StreamProblem) -> String {
+    let has_addons = moviebox_tui::config::load_addons().iter().any(|a| a.enabled && a.provides_stream);
+    if has_addons {
+        return problem.message();
+    }
+    match problem {
+        StreamProblem::Provider(e) => e.clone(),
+        _ => "No source has this title right now. Adding a stream addon in Settings \u{2192} Addons gives the app somewhere else to look.".into(),
+    }
 }
 
 #[tauri::command]
@@ -177,11 +193,49 @@ pub async fn fetch_subtitle(state: State<'_, AppState>, url: String) -> CmdResul
 }
 
 pub fn norm_title(t: &str) -> String {
-    moviebox_tui::providers::moviebox::clean_moviebox_title(t)
+    strip_season(moviebox_tui::providers::moviebox::clean_moviebox_title(t))
         .to_lowercase()
         .chars()
         .filter(|c| c.is_alphanumeric())
         .collect()
+}
+
+/// Drop a trailing season marker from a title.
+///
+/// MovieBox labels a series with the seasons it is carrying -- "Breaking Bad [Hindi] S5",
+/// "The Boys [Hindi] S1-S5" -- while the other source lists the series under its plain
+/// name. Comparing the two without removing the marker never matches, which is why series
+/// used to fall through to no source at all.
+pub fn strip_season(t: &str) -> &str {
+    let trimmed = t.trim_end_matches(|c: char| c.is_whitespace() || c == '-');
+    let cut = trimmed.rfind(|c: char| c.is_whitespace()).map(|i| i + 1).unwrap_or(0);
+    let tail = &trimmed[cut..];
+    let looks_like_season = {
+        let low = tail.to_ascii_lowercase();
+        let body = low.strip_prefix('s').unwrap_or("");
+        !body.is_empty()
+            && body.chars().all(|c| c.is_ascii_digit() || c == '-')
+            && body.chars().any(|c| c.is_ascii_digit())
+    };
+    if cut > 0 && looks_like_season {
+        // "... Season 3" leaves the word behind once the number is gone.
+        let head = trimmed[..cut].trim_end();
+        return head.strip_suffix("Season").map(str::trim_end).unwrap_or(head);
+    }
+    // "Breaking Bad Season 3" -- the number is a bare word rather than "S3".
+    if cut > 0 && tail.chars().all(|c| c.is_ascii_digit()) {
+        let head = trimmed[..cut].trim_end();
+        if let Some(h) = head.strip_suffix("Season").or_else(|| head.strip_suffix("season")) {
+            return h.trim_end();
+        }
+    }
+    trimmed
+}
+
+/// How far apart two release years are, when both are known.
+fn year_gap(a: &str, b: &str) -> Option<i32> {
+    let (a, b) = (a.trim().parse::<i32>().ok()?, b.trim().parse::<i32>().ok()?);
+    Some((a - b).abs())
 }
 
 /// Resolve playable 4KHDHub streams for a title, best first.
@@ -190,7 +244,7 @@ pub fn norm_title(t: &str) -> String {
 /// only a confident match is accepted -- playing the wrong film is worse than playing
 /// nothing. Resolving a mirror costs a round trip through their redirector, so only the
 /// first few releases are tried, and they are tried together rather than one after another.
-async fn fourk_streams(
+pub async fn fourk_streams(
     service: &MovieBoxService,
     title: &str,
     year: Option<&str>,
@@ -202,15 +256,47 @@ async fn fourk_streams(
     let Some(fourk) = service.fourk_client.clone() else {
         return Err("No other source is available for this title.".into());
     };
-    let results = tokio::time::timeout(Duration::from_secs(15), service.search_typed(ProviderKind::FourKHdHub, title, 1))
-        .await
-        .map_err(|_| "The other source took too long to respond.".to_string())?
-        .unwrap_or_default();
+    // Search by the plain name first. MovieBox decorates its own titles ("Inception
+    // [Hindi]", "The Boys [Hindi] S1-S5"), and those decorations are noise to the other
+    // source's search; the raw title is kept as a second attempt in case cleaning it
+    // removed something that mattered.
+    let clean = strip_season(moviebox_tui::providers::moviebox::clean_moviebox_title(title)).trim().to_string();
     let want = norm_title(title);
     let year = year.unwrap_or_default();
-    let matched = results
-        .into_iter()
-        .find(|c| norm_title(&c.title) == want && (year.is_empty() || c.year.as_deref().unwrap_or("") == year));
+    let is_series = season > 0 || episode > 0;
+
+    let mut results = Vec::new();
+    for q in [clean.as_str(), title].iter().take(if clean.eq_ignore_ascii_case(title) { 1 } else { 2 }) {
+        let hits = tokio::time::timeout(Duration::from_secs(15), service.search_typed(ProviderKind::FourKHdHub, q, 1))
+            .await
+            .map_err(|_| "The other source took too long to respond.".to_string())?
+            .unwrap_or_default();
+        results.extend(hits);
+        if results.iter().any(|c| norm_title(&c.title) == want) {
+            break;
+        }
+    }
+
+    // The title must match exactly -- playing the wrong film is worse than playing
+    // nothing. The year is a preference rather than a gate: for a series MovieBox
+    // reports the year of the season it is showing, not the year the series began, so
+    // demanding an exact year meant no series ever found a fallback.
+    let mut named: Vec<_> = results.iter().filter(|c| norm_title(&c.title) == want).collect();
+    named.sort_by_key(|c| match (year.is_empty(), c.year.as_deref()) {
+        (true, _) => 0,
+        (false, Some(y)) => year_gap(y, &year).unwrap_or(99),
+        (false, None) => 50,
+    });
+    let matched = named.into_iter().find(|c| {
+        if year.is_empty() || is_series {
+            return true;
+        }
+        match c.year.as_deref() {
+            // A one-year drift is ordinary: festival year against release year.
+            Some(y) => year_gap(y, &year).map(|g| g <= 1).unwrap_or(false),
+            None => true,
+        }
+    });
     let Some(item) = matched else {
         return Err("No other source has this title.".into());
     };
@@ -282,6 +368,36 @@ pub async fn other_source_streams(
 pub async fn alternate_source(state: State<'_, AppState>, title: String, year: Option<String>, season: usize, episode: usize, preferred: u64) -> CmdResult<StreamDto> {
     let mut list = fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred, 4).await?;
     Ok(list.remove(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn season_markers_come_off_the_title() {
+        // MovieBox labels a series with the seasons it carries; the other source does not.
+        assert_eq!(norm_title("Breaking Bad [Hindi] S5"), "breakingbad");
+        assert_eq!(norm_title("The Boys [Hindi] S1-S5"), "theboys");
+        assert_eq!(norm_title("Wednesday [Hindi] S2"), "wednesday");
+        assert_eq!(norm_title("Loki Season 2"), "loki");
+        assert_eq!(norm_title("Inception [Hindi]"), "inception");
+    }
+
+    #[test]
+    fn a_title_that_ends_in_a_number_is_not_a_season() {
+        // "Stree 2" and "3 Idiots" are names, not season markers.
+        assert_eq!(norm_title("Stree 2"), "stree2");
+        assert_eq!(norm_title("Dune: Part Two"), "duneparttwo");
+        assert_eq!(norm_title("3 Idiots"), "3idiots");
+    }
+
+    #[test]
+    fn years_compare_by_distance() {
+        assert_eq!(year_gap("2024", "2023"), Some(1));
+        assert_eq!(year_gap("2019", "2024"), Some(5));
+        assert_eq!(year_gap("", "2024"), None);
+    }
 }
 
 #[cfg(test)]

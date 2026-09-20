@@ -2,6 +2,17 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-09-20 — 1.3.1
+
+### Fixed
+- **Series never found a fallback, so with MovieBox dark most of them would not play.** MovieBox labels a series with the seasons it carries ("The Boys [Hindi] S1-S5") and reports the year of the season it is showing rather than the year the series began; 4KHDHub lists it under the plain name and the original year. The matcher demanded an identical title and an identical year, so every one of those comparisons failed. Season markers now come off the title, and the year is a preference rather than a gate -- exact year first, then nearest, and for a film only within a year. The title itself still has to match exactly, because playing the wrong film is worse than playing nothing. Measured over 20 popular titles: **10 had a playable source before, 14 after**; Breaking Bad, The Boys, Wednesday and Loki all went from nothing to 2160p (`src-tauri/src/commands/streams.rs`).
+- **The Adults section would not scroll.** It was the one page without a scroll container, so anything past the first rows was unreachable by mouse or keyboard. It now scrolls like every other page, remembers its position, and its tiles take arrow-key focus (`src/pages/Adults.tsx`).
+- **The PIN was asked for again every time you came back from a clip.** The unlock lived in the page's own state, and opening a clip leaves that page for the player, which unmounts it. It now lives in the app store, so it is asked for once per launch as the Settings panel always claimed. Changing the PIN, removing it, or switching the section off drops the unlock (`src/store/app.ts`, `src/components/AdultSettings.tsx`).
+- **"Please try again in a little while" was sent to titles that would never work.** When nothing is found and no stream addon is installed, the app now says so and points at Settings → Addons instead of inviting another attempt.
+
+### Added
+- `probe chain` walks the app's own failover for a list of titles and prints where each one stops, through the real matcher rather than a copy of it (`src-tauri/src/bin/probe.rs`).
+
 ## 2026-09-20 — 1.3.0
 
 ### Added

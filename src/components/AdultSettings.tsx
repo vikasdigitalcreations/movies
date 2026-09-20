@@ -19,6 +19,7 @@ export function AdultSettings() {
   const [again, setAgain] = useState("");
   const [busy, setBusy] = useState(false);
   const toast = useApp((s) => s.toast);
+  const setUnlocked = useApp((s) => s.setAdultUnlocked);
 
   const refresh = async () => {
     setHasPin(await api.pinIsSet().catch(() => false));
@@ -41,6 +42,8 @@ export function AdultSettings() {
     setBusy(true);
     try {
       await api.pinSet(next, hasPin ? current : undefined);
+      // An unlock granted by the old PIN must not outlive it.
+      setUnlocked(false);
       await refresh();
       reset();
       toast("PIN saved.", "success");
@@ -55,6 +58,7 @@ export function AdultSettings() {
     setBusy(true);
     try {
       await api.pinClear(current);
+      setUnlocked(false);
       await refresh();
       reset();
       window.dispatchEvent(new Event("moviebox:adult-changed"));
@@ -69,6 +73,7 @@ export function AdultSettings() {
   const toggleSection = async (v: boolean) => {
     try {
       await api.adultSetEnabled(v);
+      if (!v) setUnlocked(false);
       setEnabled(v);
       window.dispatchEvent(new Event("moviebox:adult-changed"));
       toast(v ? "Adults section added to the sidebar." : "Adults section hidden.", "success");

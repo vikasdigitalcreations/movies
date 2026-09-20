@@ -291,6 +291,54 @@ async fn main() {
                 println!("   search '{s}': {} hits -> {:?}", hits.len(), hits.first().map(|c| (c.title.clone(), c.year.clone())));
             }
         }
+        // Walk the app's own failover for each title and say exactly where it stops:
+        // `cargo run --bin probe -- chain "Inception" "The Boys" ...`
+        "chain" => {
+            let titles: Vec<String> = if args.len() > 2 {
+                args[2..].to_vec()
+            } else {
+                [
+                    "Inception", "Dune: Part Two", "Barbie", "Oppenheimer", "The Batman",
+                    "Breaking Bad", "Stranger Things", "The Boys", "Wednesday", "Loki",
+                    "Jawan", "Animal", "Kalki 2898 AD", "Stree 2", "Munjya",
+                    "Godzilla x Kong", "Furiosa", "Civil War", "The Fall Guy", "Twisters",
+                ]
+                .iter().map(|s| s.to_string()).collect()
+            };
+            let mut served = 0usize;
+            for t in &titles {
+                let hits = svc.search_typed(ProviderKind::MovieBox, t, 1).await.unwrap_or_default();
+                let Some(first) = hits.into_iter().next() else {
+                    println!("{t:<20} | no MovieBox hit");
+                    continue;
+                };
+                let is_series = matches!(first.media_type, moviebox_tui::providers::MediaType::Series);
+                let (se, ep) = if is_series { (1, 1) } else { (0, 0) };
+                let raw = first.title.clone();
+                let clean = moviebox_tui::providers::moviebox::clean_moviebox_title(&raw).to_string();
+                let year = first.year.clone().unwrap_or_default();
+
+                // tier 1
+                let rels = ReleaseProvider::episode_streams(&svc.client, &first.id.value, se, ep).await.unwrap_or_default();
+                let mirrors: Vec<_> = rels.iter().flat_map(|r| r.mirrors.iter()).collect();
+                let real = mirrors.iter().filter(|m| !m.resolver_url.to_ascii_lowercase().contains("aoneroom.com/other/")).count();
+                let tier1 = if real > 0 { "MovieBox OK" } else if !mirrors.is_empty() { "advert only" } else { "no stream" };
+
+                // tier 2, through the app's own matcher so this measures shipped behaviour
+                let t2 = moviebox_lib::commands::streams::fourk_streams(
+                    &svc, &raw, first.year.as_deref(), se, ep, 0, 2,
+                )
+                .await;
+                let line = match &t2 {
+                    Ok(list) => format!("4KHDHub {} stream(s)", list.len()),
+                    Err(e) => format!("4KHDHub: {e}"),
+                };
+                if real > 0 || t2.is_ok() { served += 1; }
+                let _ = clean;
+                println!("{t:<20} | {tier1:<11} | mb=\"{raw}\" ({year}) | {line}");
+            }
+            println!("\n{} of {} titles have a playable tier", served, titles.len());
+        }
         // Check the addon bridge: title -> IMDb id -> streams.
         // `cargo run --bin probe -- addons "Inception" 2010`
         "addons" => {

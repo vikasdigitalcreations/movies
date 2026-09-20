@@ -24,6 +24,9 @@ interface AppStore {
   online: boolean;
   tourOpen: boolean;
   contextMenu: ContextMenuState | null;
+  /** Whether the PIN has been accepted since the app started. Kept here, and not in the
+   *  Adults page, so leaving the page to watch something does not ask for it again. */
+  adultUnlocked: boolean;
   loadSettings: () => Promise<void>;
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
   refreshDownloads: () => Promise<void>;
@@ -36,6 +39,7 @@ interface AppStore {
   setOnline: (v: boolean) => void;
   setTourOpen: (v: boolean) => void;
   openContextMenu: (m: ContextMenuState | null) => void;
+  setAdultUnlocked: (v: boolean) => void;
 }
 
 let toastSeq = 1;
@@ -49,6 +53,7 @@ export const useApp = create<AppStore>((set, get) => ({
   online: true,
   tourOpen: false,
   contextMenu: null,
+  adultUnlocked: false,
   loadSettings: async () => {
     const s = await api.settingsGet();
     set({ settings: s });
@@ -82,4 +87,5 @@ export const useApp = create<AppStore>((set, get) => ({
   setOnline: (v) => set({ online: v }),
   setTourOpen: (v) => set({ tourOpen: v }),
   openContextMenu: (m) => set({ contextMenu: m }),
+  setAdultUnlocked: (v) => set({ adultUnlocked: v }),
 }));
