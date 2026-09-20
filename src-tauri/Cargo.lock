@@ -2986,6 +2986,7 @@ dependencies = [
 name = "moviebox"
 version = "1.1.1"
 dependencies = [
+ "base64 0.22.1",
  "dirs",
  "fs2",
  "futures",
