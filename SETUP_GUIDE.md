@@ -31,10 +31,10 @@ powershell -ExecutionPolicy Bypass -File scripts/fetch-ffmpeg.ps1
 
 The second command downloads `libmpv-2.dll` (LGPL build) and `libmpv-wrapper.dll` into `src-tauri/lib/`. The third downloads the LGPL ffmpeg build into `src-tauri/bin/`, which the app ships as a sidecar and uses to join downloaded DASH streams into one file. All three are gitignored, so run them on every fresh clone — without the DLLs the app builds but cannot play anything, and without ffmpeg downloads fail at the last step.
 
-The vendored crate is already in `vendor/moviebox-tui` (MovieBox-Tui v0.1.20, unmodified). To refresh it:
+The vendored crate is already in `vendor/moviebox-tui` (MovieBox-Tui v0.1.21, unmodified -- our copy is byte-identical to upstream, so a refresh is a plain tree replacement). Upstream ships fixes for provider changes every few weeks, so check for a newer tag whenever playback breaks. To refresh it:
 
 ```bash
-git clone --depth 1 --branch v0.1.20 https://github.com/mesamirh/MovieBox-Tui vendor/moviebox-tui
+git clone --depth 1 --branch v0.1.21 https://github.com/mesamirh/MovieBox-Tui vendor/moviebox-tui
 ```
 
 ## Environment setup

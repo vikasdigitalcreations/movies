@@ -2,6 +2,22 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-09-20 — 1.2.0
+
+### Fixed
+- **MovieBox stopped serving video partway through the day and the app had no way to ride it out.** A survey of 17 popular titles scored 15 playable at 14:53 and 0 at 15:40, every one answering with the "update the app" advert; a fresh token, a clean cache and the previous vendored version all behaved the same, so this is their servers. Failover moved out of the player and into the `streams` command, where every caller gets it: MovieBox first, then 4KHDHub by title and year, then the user's addons. Downloads now reach the same alternative that playback does (`src-tauri/src/commands/streams.rs`).
+- **"Try another source" had been failing on every title.** 4KHDHub moved its HubCloud/HubDrive links behind a `greenmotors.club` interstitial that hides the real URL under two base64 layers and a scrambled alphabet; the vendored v0.1.20 resolver could not follow it and reported "dead or expired". Upgrading to v0.1.21 took its mediator unpacker: Inception went from 0 of 7 releases to 5 of 5, at 2160p and 1080p.
+- **Searching a title MovieBox actually carries could return nothing.** "Barbie" finds none, "Barbie movie" puts Barbie (2023) first. A first page with no results is retried once with a single extra word (`src-tauri/src/commands/catalog.rs`).
+- Error messages now distinguish three cases that used to read alike, because the user can act on the difference: MovieBox withholding a title it has, MovieBox not carrying it at all, and the request itself failing (`StreamProblem`).
+
+### Added
+- **Stremio addons as a third source.** Settings → Extra sources installs an addon from its link, turns it off, or removes it. Addons key on IMDb ids, so Cinemeta (seeded by default, not removable) turns a title and year into one. Magnet and torrent links are dropped by the vendored adapter, so everything offered is directly playable. New commands `addons_list`, `addons_add`, `addons_remove`, `addons_toggle`, `addon_streams` (`src-tauri/src/commands/addons.rs`, `src/components/AddonsSettings.tsx`).
+- Four read-only probe modes that answer "why isn't it playing?" with numbers: `survey`, `mirror`, `fourkplay`, `fourkmirrors`, plus `rescue` and `addons` (`src-tauri/src/bin/probe.rs`).
+- `failover_health`, a skipped-by-default network test that walks MovieBox then the other source and prints which one answered.
+
+### Changed
+- Vendored MovieBox-Tui upgraded v0.1.20 → v0.1.21. Our copy was byte-identical to upstream, so it was a clean tree replacement. `resolve_release` now takes a `ResolutionIntent`, preferring seekable CDNs for playback and rejecting exhausted download workers immediately.
+
 ## 2026-09-20 — 1.1.1
 
 ### Fixed

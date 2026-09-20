@@ -49,10 +49,18 @@ Full metadata including seasons, episodes, dub languages and whether the title i
 
 ## Streams
 
-### `streams(id, season: number, episode: number, absIndex: number) -> Stream[]`
+### `streams(id, season, episode, absIndex, title?, year?, preferred?) -> Stream[]`
 All playable releases for one movie or episode, already merged, deduplicated and ordered best-first by `core/stream_pool`. `multi: true` marks a multi-resolution DASH manifest (labelled "Auto"); `downloadable: true` means the queue can take it, which since 1.1.0 includes DASH. `headers` must be passed to mpv or the download worker unchanged.
 
-MovieBox's "update the app" advert links are removed here (`is_notice_url`), so in practice a MovieBox title returns one DASH release. When nothing but adverts came back, the command rejects with "MovieBox isn't serving this title right now — it only offers its 'update the app' clip. Try another source or another title."
+Three sources are tried in order, and the first that yields anything wins:
+
+1. **MovieBox.** Its "update the app" advert links are removed here (`is_notice_url`), so a healthy MovieBox title returns one DASH release.
+2. **4KHDHub**, searched by `title` + `year`. Up to four releases are resolved concurrently.
+3. **Stremio addons**, via `commands::addons::addon_streams_for`.
+
+`title` is what tiers 2 and 3 search by; omit it and only MovieBox is consulted. `preferred` is the quality ceiling (0 = best available). Since 1.2.0 the failover lives here rather than in the player, so downloads reach the same alternative that playback does.
+
+When every tier comes up empty the error describes the MovieBox outcome, because that is the one the user can act on — `StreamProblem::OnlyAdvert` (MovieBox has the title but serves only its advert), `NotCarried` (no source has it) or `Provider` (the request itself failed).
 
 ### `subtitles(id, resourceId: string, dubIds: string[], season, episode) -> Subtitle[]`
 External caption tracks for a release. Language labels are sanitised for display.
@@ -61,7 +69,25 @@ External caption tracks for a release. Language labels are sanitised for display
 Downloads one subtitle to a local file (some URLs need headers mpv cannot send) and returns the path for `sub-add`.
 
 ### `alternate_source(title, year: string | null, season, episode, preferred: number) -> Stream`
-"Try another source." Searches 4KHDHub and uses a result **only** when the normalised title matches and, when a year is known, the year matches too. Otherwise it rejects with "No other source is available for this title." Timeouts: 15 s search, 20 s stream resolution.
+"Try another source", used by the player when a stream fails mid-playback. Shares `fourk_streams` with `streams` and returns its first result. Searches 4KHDHub and uses a result **only** when the normalised title matches and, when a year is known, the year matches too. Otherwise it rejects with "No other source has this title." Timeouts: 15 s search, 20 s stream resolution, 18 s per mirror.
+
+## Addons (Stremio)
+
+Extra sources the user installs themselves. Settled in `addons_config.json` beside the other config; nothing here is sent anywhere except to the addon the user chose.
+
+### `addons_list() -> Addon[]`
+Installed addons. `core: true` marks Cinemeta, which the id bridge runs on and the UI refuses to remove.
+
+### `addons_add(url: string) -> Addon`
+Fetches and validates the manifest before saving (20 s timeout). Accepts `stremio://` links. Rejects a duplicate, an unreachable host, and an addon that offers no catalog, metadata or streams.
+
+### `addons_remove(url: string) -> void`
+Rejects removing Cinemeta.
+
+### `addons_toggle(url: string, enabled: boolean) -> void`
+
+### `addon_streams(title, year, isSeries: boolean, season, episode) -> Stream[]`
+Looks the title up through Cinemeta to get its IMDb id (strict match on normalised title, and year when known), then asks every enabled streaming addon. Magnet and torrent links are dropped by the vendored adapter, so results are always directly playable. 25 s overall timeout.
 
 ## Library
 
@@ -146,7 +172,9 @@ Two constraints learned the hard way:
 |---|---|---|---|---|
 | MovieBox / aoneroom | `api*.aoneroom.com`, `api.inmoviebox.com` — homepage, search, suggest, details, resource page, play info, captions | All catalog and stream metadata | None; signed by the vendored crate, needs the MovieBox client user agent | Undocumented. Busy responses are surfaced as "The server is busy right now" |
 | MovieBox CDN | `*.hakunaymatata.com` and peers — DASH `.mpd` and direct MP4 | Video delivery | Per-stream `Referer`, `User-Agent`, `Cookie` headers from the play info | Returns HTTP 428 to browser-like user agents; 206 to curl/okhttp/libmpv-style agents |
-| 4KHDHub | Search and stream resolution | Fallback source only, on a confident title + year match | None | 15 s search / 20 s resolve timeouts in this app. Every mirror it resolved was dead when last checked (2026-09-20) |
+| 4KHDHub | Search and stream resolution, via the `greenmotors.club` mediator | Second source, on a confident title + year match | None | 15 s search / 20 s resolve. Mirrors resolve again since the v0.1.21 vendor bump; before it every one reported "dead or expired" |
+| Cinemeta | `v3-cinemeta.strem.io` — catalog search | Turns a title + year into an IMDb id so addons can be asked | None | Seeded by default; disabling it disables addons |
+| Stremio addons | Whatever the user installs | Third source | Whatever that addon requires | User-chosen. Only HTTP streams are used; magnets are dropped |
 | GitHub Releases | `latest.json` plus the signed installer | Auto-update | None; public repo | One GET per launch |
 
 Nothing about the user is sent to any of these: no account, no identifier, no email, no telemetry.

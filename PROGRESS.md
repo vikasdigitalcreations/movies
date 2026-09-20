@@ -4,20 +4,24 @@ Last updated: 2026-09-20
 
 ## Current status
 
-v1.1.1 is built, published and installed on this PC. The release feed is live at
-`https://github.com/vikasdigitalcreations/movies/releases/latest/download/latest.json`, and the
-app updated itself from 1.1.0 to 1.1.1 unattended: 1.1.0 started at 00:52:36, found the new
-version, installed it and relaunched as 1.1.1 at 00:53:12.
+v1.1.1 is the published build. Since it shipped, the work on this branch answers a
+provider failure that happened mid-session and would otherwise have left the app unable
+to play anything.
 
-This version fixes the two things that made v1.0.0 unusable in practice — MovieBox's servers had
-started answering every direct file link with a 21-second "Update now. Keep watching." advert,
-which both played instead of films and downloaded instead of them — restores downloads through the
-DASH stream, and adds auto-update so the next breakage can be fixed without asking anyone to
-reinstall.
+**MovieBox has stopped serving video.** At 14:53 on 2026-09-20 a survey of 17 popular
+titles scored 15 playable; at 15:40 the same survey, on the same vendored version,
+scored 0 -- every title answering with the 21-second "update the app" advert that used
+to affect only direct file links, now in place of the DASH manifests as well. A fresh
+token, a clean cache and the previous vendored version all behave identically, so this
+is their servers rather than our state.
+
+The app now plays through it. Streams come from three sources in order -- MovieBox,
+then 4KHDHub, then Stremio addons the user installs -- and with MovieBox dark, Details
+-> Play resolves 4KHDHub and plays Inception at 2160p.
 
 ## Done
 
-- **Scaffold and vendoring** — Tauri 2 + React 19 + TypeScript + Vite + Tailwind 4; MovieBox-Tui v0.1.20 vendored at `vendor/moviebox-tui` as a path dependency. No `pub` edits to the vendored source were needed.
+- **Scaffold and vendoring** — Tauri 2 + React 19 + TypeScript + Vite + Tailwind 4; MovieBox-Tui vendored at `vendor/moviebox-tui` as a path dependency (v0.1.20 at first, v0.1.21 since). No `pub` edits to the vendored source were needed.
 - **Player spike** — libmpv renders inside the Tauri window with the WebView2 overlay drawing controls on top. Confirmed with a native `PrintWindow` capture of the running window.
 - **Backend** — 32 Tauri commands across catalog, streams, library, downloads and system; `download://progress` and `download://removed` events; 10-minute home cache, details cache, friendly error mapping.
 - **Frontend** — Home / Movies / Series / Anime, Search, Details, Player, Downloads, Settings, Help, My List, Continue Watching; toasts, context menus, welcome tour, offline banner, skeletons.
@@ -28,26 +32,38 @@ reinstall.
 - **Packaging** — app icon, `Getting Started.html`, NSIS hooks (guide shortcut, opens once after a non-silent install), per-user install mode, embedded WebView2 bootstrapper, portable zip script, ffmpeg sidecar.
 - **Verification** (2026-09-15, v1.0.0): installer 23/23, portable 4/4, player shortcuts 22/22, library/navigation/offline 11/11, resume 4/4, series/autoplay/sleep 3/3 after the fix, downloads 6/7 (a test-path assumption, since corrected).
 - **Verification** (2026-09-20, v1.1.0/v1.1.1, dev app and installed build): Rust unit tests 15/15; `provider_health` and `dash_health` pass against the live API; hero "Play" opens a real 55-minute episode; the player's back button lands on the details page and stays there, and a second Back reaches Home; a 523 MB download ran, paused at 89.3 MB, resumed at 89.3 MB (not from zero), finished as a 2:28:07 MP4 carrying video and audio, and played offline from the Downloads page; the installed build reported "You're on the latest version" from Settings and then updated itself 1.1.0 -> 1.1.1 unattended.
+- **Vendor upgrade to v0.1.21 (unreleased)** -- our copy was byte-identical to upstream, so a clean tree replacement. Revives 4KHDHub, whose links moved behind a `greenmotors.club` interstitial that the v0.1.20 resolver could not follow: Inception went from 0 of 7 releases to 5 of 5.
+- **Three-tier failover (unreleased)** -- moved out of the player into `commands::streams::streams`, so downloads reach the same alternatives playback does. Errors distinguish MovieBox withholding a title, not carrying it, and the request failing.
+- **Stremio addons (unreleased)** -- Settings -> Extra sources; five commands; Cinemeta bridges MovieBox ids to IMDb ids. Magnet links are dropped.
+- **Search rescue (unreleased)** -- a first page with no results is retried once with one extra word, which recovers titles like Barbie that MovieBox carries but will not return for the bare name.
+- **Measurement tooling (unreleased)** -- `probe survey|mirror|fourkplay|fourkmirrors|rescue|addons` and the `failover_health` test, so "it stopped playing" is answered with numbers in about a minute.
+- **Verification** (2026-09-20, dev app over CDP, MovieBox dark): Rust tests 14/14 and `tsc` clean; `addons_list` returns Cinemeta through real IPC; six addon guard paths (bad URL, dead host, subtitles-only addon, duplicate, removing Cinemeta, no stream addon) each fail with their own message and persist nothing; `streams` returned three 4KHDHub releases in 10.7 s; the resolved URL answered HTTP 206 as `video/x-matroska`; Details -> Play played Inception at 2160p with the clock advancing 0:25 -> 0:37 over twelve seconds.
 
 ## In progress
 
-- Nothing. The working tree is committed and the release is published.
+- Nothing. The working tree is committed on `session/2026-09-20-diagnose-playback-failures`; 1.2.0 is not published yet.
 
 ## Next
 
-1. Send `release/MovieBox_1.1.1_x64-setup.exe` to the friend once. v1.0.0 has no updater, so that
-   first hop is manual; after it, new versions arrive by themselves.
-2. Optional: strip `probe.exe` (a development-only API probe) from the bundle — it adds about
-   11 MB to the installer for no user-facing reason.
-3. Watch for the provider changing again. `provider_health` and `dash_health` answer that in
-   seconds, and `scripts/publish-release.ps1` ships the fix.
+1. Release this as 1.2.0 with `scripts/publish-release.ps1`. Installed copies are on
+   1.1.1, which cannot play anything while MovieBox is dark, so this matters.
+2. Watch whether MovieBox comes back. `cargo run --bin probe -- survey` answers it in
+   about a minute; if it returns, nothing needs undoing -- it simply becomes tier one again.
+3. Find and document a working HTTP-streaming addon. The addon path is verified as far
+   as the id bridge and every guard, but no addon that serves direct HTTP streams was
+   installed, so aggregation across a live stream addon is still untested.
+4. Optional: strip `probe.exe` from the bundle (about 11 MB) -- though it is now the
+   diagnostic tool, so shipping it may be worth the size.
+5. Track upstream. Seven releases landed in the month to v0.1.21; a pinned vendor copy
+   goes stale within days of a provider change.
 
 ## Known issues / blockers
 
 | Issue | Detail | Workaround |
 |---|---|---|
-| MovieBox serves one quality | The API now grants a single signed DASH manifest per title, so the quality list is "Best available" rather than 1080p/720p/480p | None needed; mpv adapts within the manifest |
-| 4KHDHub is dead | "Try another source" finds titles but every mirror it resolves reports "dead or expired" (checked 2026-09-20) | The fallback fails politely; MovieBox is the working source |
+| MovieBox serves one quality | When MovieBox worked it granted a single signed DASH manifest per title, so the quality list read "Best available" rather than 1080p/720p/480p | None needed; mpv adapts within the manifest. 4KHDHub offers real 2160p/1080p choices |
+| MovieBox serves no video | Since about 15:40 on 2026-09-20 every title returns only the "update the app" advert, DASH manifests included | The app falls back to 4KHDHub, then to addons. Re-check with `probe survey` |
+| Addon streaming unproven end to end | The id bridge, install guards and aggregation call are verified, but no live HTTP-streaming addon was installed | Torrent-only addons resolve to nothing playable by design |
 | Some titles have no stream | e.g. Dune: Part Two returns an empty stream list from MovieBox | The app says so plainly; nothing to play |
 | SmartScreen warning | The installer is unsigned, so Windows shows "Windows protected your PC" on first run | Documented in `Getting Started.html`: More info → Run anyway. Portable zip as backup |
 | libmpv-wrapper crash | Calling `get_property` with the `node` format from the frontend causes an access violation | Observe node properties instead of polling them |
