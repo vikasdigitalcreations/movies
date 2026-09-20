@@ -275,6 +275,22 @@ async fn main() {
                 }
             }
         }
+        // Compare a raw search against MovieBox's own autocomplete, to work out the best
+        // rescue for a query that returns nothing: `cargo run --bin probe -- rescue "Barbie"`.
+        "rescue" => {
+            let q = args.get(2).cloned().unwrap_or_else(|| "Barbie".into());
+            let direct = svc.search_typed(ProviderKind::MovieBox, &q, 1).await.unwrap_or_default();
+            println!("direct search '{q}': {} hits", direct.len());
+            for c in direct.iter().take(3) {
+                println!("   {} ({:?})", c.title, c.year);
+            }
+            let sugg = svc.suggest(&q).await.unwrap_or_default();
+            println!("suggest '{q}': {sugg:?}");
+            for s in sugg.iter().take(3) {
+                let hits = svc.search_typed(ProviderKind::MovieBox, s, 1).await.unwrap_or_default();
+                println!("   search '{s}': {} hits -> {:?}", hits.len(), hits.first().map(|c| (c.title.clone(), c.year.clone())));
+            }
+        }
         _ => {}
     }
 }

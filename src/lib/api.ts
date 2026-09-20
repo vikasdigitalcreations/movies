@@ -161,8 +161,10 @@ export const api = {
   search: (query: string, page: number, filter: string) => invoke<Card[]>("search", { query, page, filter }),
   suggest: (query: string) => invoke<string[]>("suggest", { query }),
   details: (id: string) => invoke<Details>("details", { id }),
-  streams: (id: string, season: number, episode: number, absIndex: number) =>
-    invoke<Stream[]>("streams", { id, season, episode, absIndex }),
+  // title/year let the backend fall back to the other source when MovieBox withholds a
+  // title; leave them out and only MovieBox is consulted.
+  streams: (id: string, season: number, episode: number, absIndex: number, title?: string, year?: string | null, preferred?: number) =>
+    invoke<Stream[]>("streams", { id, season, episode, absIndex, title: title ?? null, year: year ?? null, preferred: preferred ?? null }),
   subtitles: (id: string, resourceId: string, dubIds: string[], season: number, episode: number) =>
     invoke<Subtitle[]>("subtitles", { id, resourceId, dubIds, season, episode }),
   fetchSubtitle: (url: string) => invoke<string>("fetch_subtitle", { url }),

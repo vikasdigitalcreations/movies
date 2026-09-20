@@ -101,11 +101,24 @@ pub async fn search(state: State<'_, AppState>, query: String, page: usize, filt
     if q.is_empty() {
         return Ok(vec![]);
     }
-    let items = state
+    let page = page.max(1);
+    let mut items = state
         .service
-        .search_typed(ProviderKind::MovieBox, q, page.max(1))
+        .search_typed(ProviderKind::MovieBox, q, page)
         .await
         .map_err(|e| e.user_message(ProviderKind::MovieBox))?;
+    // MovieBox's search sometimes returns nothing for a bare title that it clearly
+    // carries: "Barbie" finds none, "Barbie movie" puts Barbie (2023) first. One extra
+    // word rescues it, so try that once rather than showing "No results" for a title
+    // that is actually there. Only on the first page, and only when nothing came back.
+    if items.is_empty() && page == 1 {
+        let hint = if filter == "series" { "series" } else { "movie" };
+        items = state
+            .service
+            .search_typed(ProviderKind::MovieBox, &format!("{q} {hint}"), 1)
+            .await
+            .unwrap_or_default();
+    }
     Ok(items
         .into_iter()
         .filter(|c| match filter.as_str() {

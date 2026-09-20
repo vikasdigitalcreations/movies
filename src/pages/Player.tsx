@@ -363,7 +363,7 @@ export function PlayerPage() {
         list = [{ label: "Downloaded", height: 0, multi: false, url: session.localPath, headers: [], downloadable: false, source: "This PC" }];
       } else {
         try {
-          list = await api.streams(r.id, r.season, r.episode, absIndex(session.seasons, r.season, r.episode));
+          list = await api.streams(r.id, r.season, r.episode, absIndex(session.seasons, r.season, r.episode), r.title, r.year, pref);
         } catch (e) {
           if (cancelled) return;
           streamsRef.current = [];

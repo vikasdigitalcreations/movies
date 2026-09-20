@@ -69,7 +69,7 @@ export function DownloadDialog({ target, onClose }: { target: DlTarget | null; o
     const first = target.items[0];
     api.systemInfo().then((i) => setFree(i.freeBytes ?? null)).catch(() => {});
     api
-      .streams(d.id, first.season, first.episode, absIndex(d.seasons, first.season, first.episode))
+      .streams(d.id, first.season, first.episode, absIndex(d.seasons, first.season, first.episode), d.title, d.year)
       .then((list) => {
         const dl = uniqueByHeight(list.filter((s) => s.downloadable));
         if (!dl.length) {
@@ -103,7 +103,7 @@ export function DownloadDialog({ target, onClose }: { target: DlTarget | null; o
       while (queue.length) {
         const it = queue.shift()!;
         try {
-          const list = await api.streams(d.id, it.season, it.episode, absIndex(d.seasons, it.season, it.episode));
+          const list = await api.streams(d.id, it.season, it.episode, absIndex(d.seasons, it.season, it.episode), d.title, d.year, height);
           const s = pickHeight(list, height);
           if (s) out.push({ ...it, stream: s, sub: await findSub(d, s, it.season, it.episode, settings?.subtitleLanguage) });
         } catch {
