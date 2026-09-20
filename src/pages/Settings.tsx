@@ -7,6 +7,7 @@ import { APP_SHORTCUTS, PLAYER_SHORTCUTS } from "../lib/shortcuts";
 import { Button, ConfirmDialog, PageHeader, Toggle } from "../components/ui";
 import { checkForUpdatesNow } from "../components/Updater";
 import { AddonsSettings } from "../components/AddonsSettings";
+import { AdultSettings } from "../components/AdultSettings";
 import { useApp } from "../store/app";
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -183,6 +184,10 @@ export function SettingsPage() {
 
         <Group title="Extra sources">
           <AddonsSettings />
+        </Group>
+
+        <Group title="Adults">
+          <AdultSettings />
         </Group>
 
         <Group title="Keyboard shortcuts">

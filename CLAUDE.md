@@ -15,6 +15,9 @@ A Tauri 2 Windows app wrapping the vendored MovieBox-Tui v0.1.21 crate (`vendor/
 - MovieBox answers every direct file link with a 21-second "Update now" advert. Never make an `aoneroom.com/other/…` link playable again -- `core/stream_pool::is_notice_url` drops them, and only the DASH manifest is real.
 - Streams come from three tiers in `commands::streams::streams`: MovieBox, then 4KHDHub, then the user's addons. Put new failover there, not in the player, so downloads get it too.
 - Addon matching is strict on normalised title and year. Loosening it plays the wrong film, which is worse than playing nothing.
+- The Adults section only exists behind a PIN: it cannot be switched on without one, and clearing the PIN switches it off. Keep that invariant -- `adult_set_enabled` and `pin_clear` both enforce it.
+- `settings_set` must never carry `pin_hash`, `pin_salt`, `locked_addons` or `adult_enabled`. Those belong to their own commands so the UI cannot wipe them and the hash stays in the backend.
+- Adult sources are the platforms' own public APIs, never scrapers. Eporner's files answer 403 outside its embed; show the embed rather than working around it.
 - Before theorising about "it stopped playing", measure it: `cargo run --bin probe -- survey` counts playable titles, and `failover_health` / `provider_health` / `dash_health` (`cargo test --lib <name> -- --ignored`) check one path each. Providers change without warning -- MovieBox went from 15 of 17 titles playable to 0 within an hour on 2026-09-20.
 - The updater signing key lives at `%USERPROFILE%\.tauri\moviebox_updater.key` and must never be committed.
 - No accounts, telemetry or user identifiers. Nothing about the user is sent to any service.

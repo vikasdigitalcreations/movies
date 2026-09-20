@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Home, Search, Film, Tv, Sparkles, Bookmark, History, Download, Settings, HelpCircle, Clapperboard } from "lucide-react";
+import { Home, Search, Film, Tv, Sparkles, Bookmark, History, Download, Settings, HelpCircle, Clapperboard, Lock } from "lucide-react";
+import { api } from "../lib/api";
 import { useApp } from "../store/app";
 
 const items = [
@@ -13,6 +15,8 @@ const items = [
   { to: "/downloads", label: "Downloads", icon: Download, badge: true },
 ];
 
+const adultItem = { to: "/adults", label: "Adults", icon: Lock };
+
 const bottom = [
   { to: "/settings", label: "Settings", icon: Settings },
   { to: "/help", label: "Help", icon: HelpCircle },
@@ -20,6 +24,15 @@ const bottom = [
 
 export function Sidebar() {
   const active = useApp((s) => s.downloads.filter((d) => d.status === "downloading" || d.status === "queued").length);
+  // The Adults entry only exists once the section is switched on and a PIN guards it,
+  // so the sidebar looks untouched until then.
+  const [adult, setAdult] = useState(false);
+  useEffect(() => {
+    const check = () => api.adultIsEnabled().then(setAdult).catch(() => setAdult(false));
+    check();
+    window.addEventListener("moviebox:adult-changed", check);
+    return () => window.removeEventListener("moviebox:adult-changed", check);
+  }, []);
 
   const link = (it: { to: string; label: string; icon: typeof Home; end?: boolean; badge?: boolean }) => (
     <NavLink
@@ -54,7 +67,10 @@ export function Sidebar() {
         </div>
         <span className="text-xl font-black tracking-tight">MovieBox</span>
       </div>
-      <nav className="flex flex-1 flex-col gap-1">{items.map(link)}</nav>
+      <nav className="flex flex-1 flex-col gap-1">
+        {items.map(link)}
+        {adult && link(adultItem)}
+      </nav>
       <nav className="flex flex-col gap-1 border-t border-white/6 pt-3">{bottom.map(link)}</nav>
     </aside>
   );

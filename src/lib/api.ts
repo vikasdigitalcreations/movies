@@ -45,6 +45,25 @@ export interface Details {
   isFavorite: boolean;
 }
 
+export type AdultSource = "eporner" | "redgifs";
+
+export interface AdultPlayback {
+  /** "stream" plays in our player; "embed" has to open the site's own player. */
+  kind: "stream" | "embed";
+  stream?: Stream | null;
+  embedUrl?: string | null;
+  source: string;
+}
+
+export interface AddonCatalog {
+  manifestUrl: string;
+  addonName: string;
+  kind: string;
+  id: string;
+  name: string;
+  locked: boolean;
+}
+
 export interface Addon {
   manifestUrl: string;
   name: string;
@@ -176,6 +195,24 @@ export const api = {
   details: (id: string) => invoke<Details>("details", { id }),
   // title/year let the backend fall back to the other source when MovieBox withholds a
   // title; leave them out and only MovieBox is consulted.
+  // --- PIN (guards the Adults section and any addon you lock)
+  pinIsSet: () => invoke<boolean>("pin_is_set"),
+  pinSet: (pin: string, current?: string) => invoke<void>("pin_set", { pin, current: current ?? null }),
+  pinVerify: (pin: string) => invoke<boolean>("pin_verify", { pin }),
+  pinClear: (current: string) => invoke<void>("pin_clear", { current }),
+  addonSetLocked: (url: string, locked: boolean) => invoke<void>("addon_set_locked", { url, locked }),
+
+  // --- Adults
+  adultIsEnabled: () => invoke<boolean>("adult_is_enabled"),
+  adultSetEnabled: (enabled: boolean) => invoke<void>("adult_set_enabled", { enabled }),
+  adultSearch: (source: AdultSource, query: string, page: number, unlocked: boolean) =>
+    invoke<Card[]>("adult_search", { source, query, page, unlocked }),
+  adultPlayback: (id: string, unlocked: boolean) => invoke<AdultPlayback>("adult_playback", { id, unlocked }),
+
+  // --- Addon catalogues
+  addonCatalogs: (unlocked: boolean) => invoke<AddonCatalog[]>("addon_catalogs", { unlocked }),
+  addonCatalogItems: (manifestUrl: string, kind: string, id: string, skip: number, unlocked: boolean) =>
+    invoke<Card[]>("addon_catalog_items", { manifestUrl, kind, id, skip, unlocked }),
   addonsList: () => invoke<Addon[]>("addons_list"),
   addonsAdd: (url: string) => invoke<Addon>("addons_add", { url }),
   addonsRemove: (url: string) => invoke<void>("addons_remove", { url }),

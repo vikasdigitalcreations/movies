@@ -361,6 +361,8 @@ export function PlayerPage() {
       let list: Stream[];
       if (session.localPath) {
         list = [{ label: "Downloaded", height: 0, multi: false, url: session.localPath, headers: [], downloadable: false, source: "This PC" }];
+      } else if (session.directStream) {
+        list = [session.directStream];
       } else {
         try {
           list = await api.streams(r.id, r.season, r.episode, absIndex(session.seasons, r.season, r.episode), r.title, r.year, pref);

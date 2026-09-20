@@ -18,6 +18,14 @@ pub struct GuiSettings {
     pub night_mode: bool,
     pub ui_zoom: f64,
     pub tour_done: bool,
+    /// Salted SHA-256 of the PIN that unlocks locked addon sections. `None` = no PIN set.
+    /// The PIN itself is never stored, and it guards nothing but this app's own UI.
+    pub pin_hash: Option<String>,
+    pub pin_salt: Option<String>,
+    /// Manifest URLs of addons whose catalogues stay hidden until the PIN is entered.
+    pub locked_addons: Vec<String>,
+    /// Whether the Adults section is shown at all. Only ever true alongside a PIN.
+    pub adult_enabled: bool,
 }
 
 impl Default for GuiSettings {
@@ -37,6 +45,10 @@ impl Default for GuiSettings {
             night_mode: false,
             ui_zoom: 1.0,
             tour_done: false,
+            pin_hash: None,
+            pin_salt: None,
+            locked_addons: Vec::new(),
+            adult_enabled: false,
         }
     }
 }

@@ -1,3 +1,4 @@
+pub mod adult;
 pub mod dash;
 pub mod downloads;
 pub mod settings;

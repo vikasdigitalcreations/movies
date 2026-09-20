@@ -4,7 +4,7 @@ Last updated: 2026-09-20
 
 ## Current status
 
-v1.2.0 is published and installed on this PC. It answers a provider failure that
+v1.3.0 adds an Adults section behind a PIN. v1.2.0 is published and installed on this PC. It answers a provider failure that
 happened mid-session and would otherwise have left the app unable to play anything.
 
 **MovieBox has stopped serving video.** At 14:53 on 2026-09-20 a survey of 17 popular
@@ -36,16 +36,19 @@ then 4KHDHub, then Stremio addons the user installs -- and with MovieBox dark, D
 - **Stremio addons (unreleased)** -- Settings -> Extra sources; five commands; Cinemeta bridges MovieBox ids to IMDb ids. Magnet links are dropped.
 - **Search rescue (unreleased)** -- a first page with no results is retried once with one extra word, which recovers titles like Barbie that MovieBox carries but will not return for the bare name.
 - **Measurement tooling (unreleased)** -- `probe survey|mirror|fourkplay|fourkmirrors|rescue|addons` and the `failover_health` test, so "it stopped playing" is answered with numbers in about a minute.
+- **Adults section (1.3.0, unreleased)** -- RedGifs (direct mp4, plays and downloads here) and Eporner (browsed natively, played in its own embed because its files 403 outside it), behind a PIN that also gates any addon the user locks.
+- **Verification** (2026-09-20, dev app over CDP, Adults section): enabling without a PIN, searching while switched off, a 2-digit PIN and a non-numeric PIN are each refused with their own message; a wrong PIN is rejected and the right one unlocks; RedGifs returned 25 items and played an 8-second clip at 1920p in MovieBox's own player; Eporner returned 30 items and opened its embed, which Esc closes; in-section search returned 30 results; removing the PIN with the wrong PIN failed, and with the right one it cleared the PIN, switched the section off, refused further searches and removed the sidebar entry.
 - **Verification** (2026-09-20, installed v1.2.0 over CDP, MovieBox dark): the update feed parses with no BOM and points at 1.2.0; `system_info` reports 1.2.0; `streams` returned four 4KHDHub releases in 10.6 s, best 2160p and downloadable; "Start over" played Inception at 2160p with the clock advancing 0:33 -> 0:48 over fifteen seconds; Back landed on the details page and stayed there, and a second Back left it.
 - **Verification** (2026-09-20, dev app over CDP, MovieBox dark): Rust tests 14/14 and `tsc` clean; `addons_list` returns Cinemeta through real IPC; six addon guard paths (bad URL, dead host, subtitles-only addon, duplicate, removing Cinemeta, no stream addon) each fail with their own message and persist nothing; `streams` returned three 4KHDHub releases in 10.7 s; the resolved URL answered HTTP 206 as `video/x-matroska`; Details -> Play played Inception at 2160p with the clock advancing 0:25 -> 0:37 over twelve seconds.
 
 ## In progress
 
-- Nothing. v1.2.0 is published and installed on this PC.
+- Nothing. v1.3.0 adds an Adults section behind a PIN. v1.2.0 is published and installed on this PC.
 
 ## Next
 
-1. Send `release/MovieBox_1.2.0_x64-setup.exe` to the friend once, by hand. The copy on
+1. Release 1.3.0 so the Adults section reaches installed copies.
+2. Send `release/MovieBox_1.2.0_x64-setup.exe` to the friend once, by hand. The copy on
    this PC had reverted to 1.0.0, which has no updater, so assume theirs may have too.
 2. Watch whether MovieBox comes back. `cargo run --bin probe -- survey` answers it in
    about a minute; if it returns, nothing needs undoing -- it simply becomes tier one again.

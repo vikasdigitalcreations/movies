@@ -2,6 +2,20 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-09-20 — 1.3.0
+
+### Added
+- **An Adults section, behind a PIN.** Off until switched on in Settings, and it cannot be switched on without a PIN, so it never appears unguarded. Removing the PIN switches it off and clears every addon lock. It stays out of Home, Search and Continue Watching (`src/pages/Adults.tsx`, `src-tauri/src/commands/adult.rs`).
+  - **RedGifs** through its documented API: an anonymous token is cached for the session, and posts resolve to a direct `.mp4`, so they play in MovieBox's own player and can be downloaded.
+  - **Eporner** through its keyless API v2 for browsing, and its own embed for playback. Its file URLs answer 403 anywhere but the embed, and defeating that would be both fragile and rude, so the embed is shown in a sandboxed frame instead. Esc closes it.
+  - Both are the platforms' own APIs rather than scrapers, so they keep whatever moderation those platforms run. No account, no key, nothing identifying sent.
+  - The PIN is stored only as a salted SHA-256 and never reaches the UI. It is a household lock, not encryption, and the Settings panel says so.
+- **Browsable addon catalogues.** `addon_catalogs` and `addon_catalog_items` expose what an installed addon offers, and any addon can be locked behind the same PIN. Addon items reuse the Details and Player screens through namespaced `addon:` ids.
+- The player can now be handed a stream directly (`Session.directStream`), which is what the Adults section plays through.
+
+### Changed
+- `settings_set` no longer carries the PIN, the addon lock list or the Adults switch. They are owned by their own commands, so a stale settings object in the UI cannot wipe them and the hash never leaves the backend.
+
 ## 2026-09-20 — 1.2.0
 
 ### Fixed

@@ -1,3 +1,4 @@
+pub mod adult;
 pub mod addons;
 pub mod catalog;
 pub mod downloads;

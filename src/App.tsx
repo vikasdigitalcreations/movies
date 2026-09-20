@@ -11,6 +11,7 @@ import { DetailsPage } from "./pages/Details";
 import { PlayerPage } from "./pages/Player";
 import { DownloadsPage } from "./pages/Downloads";
 import { SettingsPage } from "./pages/Settings";
+import { AdultsPage } from "./pages/Adults";
 import { HelpPage } from "./pages/Help";
 import { ContinuePage, MyListPage } from "./pages/Library";
 import { useApp } from "./store/app";
@@ -127,6 +128,7 @@ function Shell() {
             <Route path="/mylist" element={<MyListPage />} />
             <Route path="/continue" element={<ContinuePage />} />
             <Route path="/downloads" element={<DownloadsPage />} />
+            <Route path="/adults" element={<AdultsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="*" element={<HomePage tab="0" />} />

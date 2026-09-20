@@ -10,7 +10,9 @@
 //! official free metadata addon, answers exactly that question and is installed by
 //! default for this reason.
 
-use crate::core::types::{CmdResult, StreamDto};
+use crate::core::types::{Card, CmdResult, DetailsDto, StreamDto};
+use crate::state::AppState;
+use tauri::State;
 use moviebox_tui::providers::addons::{aggregate_streams, AddonClient, InstalledAddon};
 use moviebox_tui::providers::Release;
 use serde::Serialize;
@@ -168,4 +170,147 @@ pub async fn addon_streams_for(title: &str, year: Option<&str>, is_series: bool,
 #[tauri::command]
 pub async fn addon_streams(title: String, year: Option<String>, is_series: bool, season: usize, episode: usize) -> CmdResult<Vec<StreamDto>> {
     addon_streams_for(&title, year.as_deref(), is_series, season, episode).await
+}
+
+// ------------------------------------------------- browsing an addon's own catalogue
+
+/// Addon items reuse the Details and Player screens, so their ids have to survive a
+/// round trip through a route. `addon:<manifest>|<type>|<metaId>` does that: the prefix
+/// is unmistakable next to MovieBox's bare numbers, and `|` never appears in a URL.
+const ADDON_ID: &str = "addon:";
+
+pub fn encode_addon_id(manifest_url: &str, kind: &str, meta_id: &str) -> String {
+    format!("{ADDON_ID}{manifest_url}|{kind}|{meta_id}")
+}
+
+/// Split an `addon:` id back into (manifest_url, type, meta id).
+pub fn decode_addon_id(id: &str) -> Option<(String, String, String)> {
+    let rest = id.strip_prefix(ADDON_ID)?;
+    let mut parts = rest.splitn(3, '|');
+    let manifest = parts.next()?.to_string();
+    let kind = parts.next()?.to_string();
+    let meta = parts.next()?.to_string();
+    if manifest.is_empty() || meta.is_empty() {
+        return None;
+    }
+    Some((manifest, kind, meta))
+}
+
+pub fn is_addon_id(id: &str) -> bool {
+    id.starts_with(ADDON_ID)
+}
+
+/// One browsable catalogue offered by an installed addon.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogDto {
+    pub manifest_url: String,
+    pub addon_name: String,
+    /// Stremio type: "movie", "series", or whatever the addon invented.
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    /// True when this addon sits behind the PIN.
+    pub locked: bool,
+}
+
+/// Catalogues from enabled addons. Locked ones are left out unless `unlocked` is true,
+/// which the UI only passes once the PIN has been accepted this session.
+#[tauri::command]
+pub async fn addon_catalogs(state: State<'_, AppState>, unlocked: bool) -> CmdResult<Vec<CatalogDto>> {
+    let locked_list = state.settings.read().await.locked_addons.clone();
+    let client = AddonClient::new();
+    let mut out = Vec::new();
+    for addon in list_installed().iter().filter(|a| a.enabled && a.provides_catalog) {
+        let locked = locked_list.iter().any(|u| u == &addon.manifest_url);
+        if locked && !unlocked {
+            continue;
+        }
+        let Ok(Ok(manifest)) = tokio::time::timeout(Duration::from_secs(15), client.fetch_manifest(&addon.manifest_url)).await else {
+            continue;
+        };
+        for c in &manifest.catalogs {
+            out.push(CatalogDto {
+                manifest_url: addon.manifest_url.clone(),
+                addon_name: addon.name.clone(),
+                kind: c.r#type.clone(),
+                id: c.id.clone(),
+                name: c.name.clone().unwrap_or_else(|| c.r#type.clone()),
+                locked,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// One page of a catalogue. `skip` is Stremio's paging unit, counted in items.
+#[tauri::command]
+pub async fn addon_catalog_items(
+    state: State<'_, AppState>,
+    manifest_url: String,
+    kind: String,
+    id: String,
+    skip: usize,
+    unlocked: bool,
+) -> CmdResult<Vec<Card>> {
+    let locked_list = state.settings.read().await.locked_addons.clone();
+    if locked_list.iter().any(|u| u == &manifest_url) && !unlocked {
+        return Err("Enter the PIN to open this section.".into());
+    }
+    let client = AddonClient::new();
+    let base = AddonClient::base_addon_url(&manifest_url);
+    let extra = if skip > 0 { Some(format!("skip={skip}")) } else { None };
+    let metas = tokio::time::timeout(Duration::from_secs(20), client.fetch_catalog(&base, &kind, &id, extra.as_deref()))
+        .await
+        .map_err(|_| "That section took too long to load.".to_string())?
+        .map_err(|_| "That section isn't answering right now.".to_string())?;
+
+    Ok(metas
+        .into_iter()
+        .map(|m| Card {
+            id: encode_addon_id(&manifest_url, &kind, &m.id),
+            title: m.title.clone().unwrap_or_else(|| m.name.clone()),
+            year: m.release_info.clone(),
+            poster: m.poster.clone().or_else(|| m.cover.clone()),
+            media_type: if kind.eq_ignore_ascii_case("series") { "series".into() } else { "movie".into() },
+        })
+        .collect())
+}
+
+/// Details for an addon item, so the existing Details screen works unchanged.
+pub async fn addon_details(id: &str) -> Result<DetailsDto, String> {
+    let (manifest, kind, meta_id) = decode_addon_id(id).ok_or("That title's link is not valid.")?;
+    let client = AddonClient::new();
+    let base = AddonClient::base_addon_url(&manifest);
+    let detail = tokio::time::timeout(Duration::from_secs(20), client.fetch_meta(&base, &kind, &meta_id))
+        .await
+        .map_err(|_| "That title took too long to load.".to_string())?
+        .map_err(|_| "That title could not be loaded.".to_string())?;
+    let mut media = moviebox_tui::providers::addons::meta_detail_to_media_details(&detail);
+    // Keep the namespaced id so Play and Download route back to the same addon.
+    media.id.value = id.to_string();
+    Ok(DetailsDto::from_details(&media, false))
+}
+
+/// Streams for an addon item, asked of every enabled streaming addon.
+pub async fn addon_streams_by_id(id: &str, season: usize, episode: usize) -> Result<Vec<StreamDto>, String> {
+    let (_, kind, meta_id) = decode_addon_id(id).ok_or("That title's link is not valid.")?;
+    let installed = list_installed();
+    if !installed.iter().any(|a| a.enabled && a.provides_stream) {
+        return Err("No streaming addon is set up yet.".into());
+    }
+    let is_series = kind.eq_ignore_ascii_case("series") || season > 0 || episode > 0;
+    let client = AddonClient::new();
+    let (releases, _) = tokio::time::timeout(
+        Duration::from_secs(25),
+        aggregate_streams(&client, &installed, &meta_id, season, episode, is_series),
+    )
+    .await
+    .map_err(|_| "The addons took too long to answer.".to_string())?;
+    let mut out: Vec<StreamDto> = releases.iter().filter_map(StreamDto::from_release).collect();
+    out.sort_by_key(|s| std::cmp::Reverse(s.height));
+    if out.is_empty() {
+        return Err("No addon has a playable copy of this title.".into());
+    }
+    Ok(out)
 }

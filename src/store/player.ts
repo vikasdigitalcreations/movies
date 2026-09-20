@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useNavigate } from "react-router-dom";
-import type { PlayRef, Season } from "../lib/api";
+import type { PlayRef, Season, Stream } from "../lib/api";
 
 export interface Session {
   ref: PlayRef;
@@ -11,6 +11,8 @@ export interface Session {
   startAt: number | null;
   /** play a downloaded file instead of streaming */
   localPath?: string;
+  /** play this exact stream, for sources that resolve outside the usual providers */
+  directStream?: Stream;
   qualityOverride?: number | null;
 }
 
