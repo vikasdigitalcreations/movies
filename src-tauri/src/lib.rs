@@ -1,5 +1,5 @@
-mod commands;
-mod core;
+pub mod commands;
+pub mod core;
 mod state;
 
 use tauri::Manager;
@@ -46,6 +46,11 @@ pub fn run() {
             commands::streams::subtitles,
             commands::streams::fetch_subtitle,
             commands::streams::alternate_source,
+            commands::addons::addons_list,
+            commands::addons::addons_add,
+            commands::addons::addons_remove,
+            commands::addons::addons_toggle,
+            commands::addons::addon_streams,
             commands::library::history_list,
             commands::library::history_get,
             commands::library::history_watched,

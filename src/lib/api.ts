@@ -45,6 +45,19 @@ export interface Details {
   isFavorite: boolean;
 }
 
+export interface Addon {
+  manifestUrl: string;
+  name: string;
+  version?: string | null;
+  description?: string | null;
+  enabled: boolean;
+  providesCatalog: boolean;
+  providesMeta: boolean;
+  providesStream: boolean;
+  /** Cinemeta: needed to match titles to addons, so it can't be removed. */
+  core: boolean;
+}
+
 export interface Stream {
   label: string;
   height: number;
@@ -163,6 +176,12 @@ export const api = {
   details: (id: string) => invoke<Details>("details", { id }),
   // title/year let the backend fall back to the other source when MovieBox withholds a
   // title; leave them out and only MovieBox is consulted.
+  addonsList: () => invoke<Addon[]>("addons_list"),
+  addonsAdd: (url: string) => invoke<Addon>("addons_add", { url }),
+  addonsRemove: (url: string) => invoke<void>("addons_remove", { url }),
+  addonsToggle: (url: string, enabled: boolean) => invoke<void>("addons_toggle", { url, enabled }),
+  addonStreams: (title: string, year: string | null | undefined, isSeries: boolean, season: number, episode: number) =>
+    invoke<Stream[]>("addon_streams", { title, year: year ?? null, isSeries, season, episode }),
   streams: (id: string, season: number, episode: number, absIndex: number, title?: string, year?: string | null, preferred?: number) =>
     invoke<Stream[]>("streams", { id, season, episode, absIndex, title: title ?? null, year: year ?? null, preferred: preferred ?? null }),
   subtitles: (id: string, resourceId: string, dubIds: string[], season: number, episode: number) =>

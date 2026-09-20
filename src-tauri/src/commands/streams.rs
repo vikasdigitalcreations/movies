@@ -142,7 +142,14 @@ pub async fn streams(
     let Some(title) = title.filter(|t| !t.trim().is_empty()) else {
         return Err(problem.message());
     };
-    fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred.unwrap_or(0), 4)
+    if let Ok(list) = fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred.unwrap_or(0), 4).await {
+        return Ok(list);
+    }
+    // Last, whatever the user's own addons offer. They are tried after the built-in
+    // sources because they are slower and entirely user-configured, but they are the
+    // only tier that keeps working when both built-in providers go dark.
+    let is_series = season > 0 || episode > 0;
+    crate::commands::addons::addon_streams_for(&title, year.as_deref(), is_series, season, episode)
         .await
         .map_err(|_| problem.message())
 }
@@ -169,7 +176,7 @@ pub async fn fetch_subtitle(state: State<'_, AppState>, url: String) -> CmdResul
     Ok(path.to_string_lossy().into_owned())
 }
 
-fn norm(t: &str) -> String {
+pub fn norm_title(t: &str) -> String {
     moviebox_tui::providers::moviebox::clean_moviebox_title(t)
         .to_lowercase()
         .chars()
@@ -199,11 +206,11 @@ async fn fourk_streams(
         .await
         .map_err(|_| "The other source took too long to respond.".to_string())?
         .unwrap_or_default();
-    let want = norm(title);
+    let want = norm_title(title);
     let year = year.unwrap_or_default();
     let matched = results
         .into_iter()
-        .find(|c| norm(&c.title) == want && (year.is_empty() || c.year.as_deref().unwrap_or("") == year));
+        .find(|c| norm_title(&c.title) == want && (year.is_empty() || c.year.as_deref().unwrap_or("") == year));
     let Some(item) = matched else {
         return Err("No other source has this title.".into());
     };

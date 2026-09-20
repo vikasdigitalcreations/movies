@@ -291,6 +291,24 @@ async fn main() {
                 println!("   search '{s}': {} hits -> {:?}", hits.len(), hits.first().map(|c| (c.title.clone(), c.year.clone())));
             }
         }
+        // Check the addon bridge: title -> IMDb id -> streams.
+        // `cargo run --bin probe -- addons "Inception" 2010`
+        "addons" => {
+            let title = args.get(2).cloned().unwrap_or_else(|| "Inception".into());
+            let year = args.get(3).cloned();
+            for a in moviebox_tui::config::load_addons() {
+                println!("addon {} enabled={} stream={} catalog={}", a.name, a.enabled, a.provides_stream, a.provides_catalog);
+            }
+            match moviebox_lib::commands::addons::addon_streams_for(&title, year.as_deref(), false, 0, 0).await {
+                Ok(list) => {
+                    println!("{} stream(s)", list.len());
+                    for s in list.iter().take(6) {
+                        println!("   {} {} {}", s.label, s.source, s.url.chars().take(70).collect::<String>());
+                    }
+                }
+                Err(e) => println!("addon streams: {e}"),
+            }
+        }
         _ => {}
     }
 }
