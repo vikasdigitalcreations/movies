@@ -9,11 +9,19 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts/publish-release.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts/publish-release.ps1 -Notes "What changed"
+#   powershell -ExecutionPolicy Bypass -File scripts/publish-release.ps1 -Target (git rev-parse HEAD)
 
 param(
     [string]$Notes = "",
     [string]$KeyPath = "$env:USERPROFILE\.tauri\moviebox_updater.key",
-    [switch]$SkipBuild
+    # The commit (or branch) the release tag should point at. Without it GitHub tags the
+    # default branch's head, which is the wrong code whenever the release was built from
+    # a feature branch -- the v1.3.2 tag first landed on an old commit of main, not the code that shipped.
+    [string]$Target = "",
+    [switch]$SkipBuild,
+    # Sign and write release\latest.json, then stop before anything reaches GitHub. The
+    # auto-update workflow rehearses with this, using a throwaway key, on every dry run.
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -76,6 +84,11 @@ New-Item -ItemType Directory -Force -Path (Split-Path $latestPath) | Out-Null
 [System.IO.File]::WriteAllText($latestPath, ($latest | ConvertTo-Json -Depth 5))
 Write-Host "Wrote $latestPath"
 
+if ($DryRun) {
+    Write-Host "Dry run: signed $setup and wrote the feed, but nothing was uploaded."
+    return
+}
+
 $assets = @($setup, $sig, $latestPath)
 $portable = "release\MovieBox_${version}_x64_portable.zip"
 if (Test-Path $portable) { $assets += $portable }
@@ -86,7 +99,11 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Release $tag exists - replacing its files."
     gh release upload $tag $assets --clobber
 } else {
-    gh release create $tag $assets --title "MovieBox $version" --notes $notesText
+    if ($Target) {
+        gh release create $tag $assets --title "MovieBox $version" --notes $notesText --target $Target
+    } else {
+        gh release create $tag $assets --title "MovieBox $version" --notes $notesText
+    }
 }
 if ($LASTEXITCODE -ne 0) { throw "Publishing to GitHub failed." }
 

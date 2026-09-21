@@ -183,6 +183,9 @@ async fn main() {
 {} titles: {} playable, {} no search hit, {} no stream, {} advert only",
                 titles.len(), ok, no_hit, no_stream, advert_only
             );
+            // One fixed line for scripts: the auto-update workflow compares it before and
+            // after a re-vendor to decide whether a new upstream version is safe to ship.
+            println!("SURVEY playable={ok} total={}", titles.len());
         }
         // Print a mirror's full URL and headers, and decode the CloudFront policy so the
         // exact expiry deadline is visible: `cargo run --bin probe -- mirror <id> [se] [ep]`.

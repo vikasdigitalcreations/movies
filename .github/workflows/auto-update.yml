@@ -1,0 +1,407 @@
+# Keeps MovieBox current without anyone doing anything.
+#
+# MovieBox (the site) changes how it hands out video every few weeks, and the open-source
+# MovieBox-Tui project ships the matching fix within hours. This workflow closes the gap:
+# it watches MovieBox-Tui for a new release, re-vendors it, builds, tests, checks that
+# popular titles still play, and publishes a signed MovieBox release. Installed copies
+# pick it up the next time they open.
+#
+#   check    (ubuntu, every 4 hours)  is there a newer upstream release than we vendor?
+#   build    (windows, no secrets)    re-vendor, test, survey, build, upload the installer
+#   publish  (windows, holds the key) sign it, push it to its own branch, cut the release
+#   notify   (ubuntu)                 open an issue if anything above failed
+#
+# The updater signing key is only ever available to `publish`, which runs no upstream
+# code: it applies a patch, signs a file and calls `gh`. `build` compiles upstream code and
+# has no secrets at all. The key is stored as an *environment* secret on the `release`
+# environment, which only the default branch may use, so a branch cannot read it.
+#
+# To rehearse everything except publishing: push a branch named `ci-dry-run`, or run this
+# workflow by hand with dry_run left on. A dry run also signs with a throwaway key.
+#
+# One-time setup, and how to turn it off: see "Automatic updates" in SETUP_GUIDE.md.
+
+name: Auto-update
+
+on:
+  schedule:
+    - cron: "23 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the whole pipeline even if the vendored version is already current"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Build and test, but publish nothing"
+        type: boolean
+        default: true
+      skip_gate:
+        description: "Publish even if the survey cannot confirm titles still play (use when GitHub's servers are blocked by MovieBox)"
+        type: boolean
+        default: false
+  push:
+    branches: [ci-dry-run]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-update
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: mesamirh/MovieBox-Tui
+  DRY_RUN: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+  FORCE: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force) }}
+  SKIP_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_gate }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.plan.outputs.needed }}
+      current: ${{ steps.plan.outputs.current }}
+      upstream_tag: ${{ steps.plan.outputs.upstream_tag }}
+      next_version: ${{ steps.plan.outputs.next_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          newest() { printf '%s\n' "$@" | sort -V | tail -1; }
+
+          current=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' vendor/moviebox-tui/Cargo.toml | head -1)
+          upstream_tag=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)
+          upstream=${upstream_tag#v}
+          app=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          released=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || echo v0.0.0)
+          released=${released#v}
+          echo "vendored MovieBox-Tui: $current | upstream latest: $upstream | this checkout: MovieBox $app | last release: MovieBox $released"
+
+          needed=false
+          if [ "$upstream" != "$current" ] && [ "$(newest "$upstream" "$current")" = "$upstream" ]; then
+            needed=true
+          fi
+          if [ "$FORCE" = "true" ]; then needed=true; fi
+
+          # An earlier run already published this upstream version (its branch is the proof).
+          if [ "$needed" = true ] && [ "$FORCE" != "true" ] \
+             && git ls-remote --exit-code --heads "https://github.com/$GITHUB_REPOSITORY" "auto/vendor-$upstream_tag" >/dev/null 2>&1; then
+            echo "auto/vendor-$upstream_tag already exists, so $upstream_tag was published before. Nothing to do."
+            needed=false
+          fi
+
+          # Building from a checkout that is older than the last release would publish a downgrade.
+          if [ "$needed" = true ] && [ "$(newest "$app" "$released")" != "$app" ]; then
+            echo "::error::This checkout is MovieBox $app but $released is already released. Merge the branch that produced $released into the default branch first, or the update would ship older code."
+            exit 1
+          fi
+
+          base=$(newest "$app" "$released")
+          next=$(echo "$base" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')
+
+          {
+            echo "needed=$needed"
+            echo "current=$current"
+            echo "upstream_tag=$upstream_tag"
+            echo "next_version=$next"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$needed" = true ]; then
+            echo "### Update needed: MovieBox-Tui $current → $upstream, shipping as MovieBox $next" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Up to date: vendoring MovieBox-Tui $current, upstream is $upstream" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ needs.check.outputs.upstream_tag }}
+      CUR: ${{ needs.check.outputs.current }}
+      NEXT: ${{ needs.check.outputs.next_version }}
+    steps:
+      # LF everywhere, so the patch this job produces applies cleanly in the publish job.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Fetch libmpv
+        run: npx tauri-plugin-libmpv-api setup-lib
+
+      - name: Fetch ffmpeg
+        shell: pwsh
+        run: ./scripts/fetch-ffmpeg.ps1
+
+      # The yardstick: how many popular titles play with the version we ship today.
+      # A network hiccup here must not stop the run, so failures count as zero.
+      - name: Survey before (the vendored version we ship now)
+        id: before
+        working-directory: src-tauri
+        run: |
+          cargo run --release --bin probe -- survey 2>&1 | tee "$RUNNER_TEMP/before.txt" || true
+          line=$(grep -o 'SURVEY playable=[0-9]* total=[0-9]*' "$RUNNER_TEMP/before.txt" | tail -1 || true)
+          echo "playable=$(echo "${line:-SURVEY playable=0 total=0}" | sed 's/.*playable=\([0-9]*\).*/\1/')" >> "$GITHUB_OUTPUT"
+          echo "total=$(echo "${line:-SURVEY playable=0 total=0}" | sed 's/.*total=\([0-9]*\)/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Re-vendor MovieBox-Tui ${{ env.TAG }} (a clean tree replacement)
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch "$TAG" "https://github.com/$UPSTREAM.git" "$RUNNER_TEMP/upstream"
+          rm -rf "$RUNNER_TEMP/upstream/.git" vendor/moviebox-tui
+          mv "$RUNNER_TEMP/upstream" vendor/moviebox-tui
+          got=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' vendor/moviebox-tui/Cargo.toml | head -1)
+          if [ "$got" != "${TAG#v}" ]; then
+            echo "::error::Upstream tag $TAG carries crate version $got, not ${TAG#v}. Refusing to guess."
+            exit 1
+          fi
+          echo "vendored $(find vendor/moviebox-tui -type f | wc -l) files"
+
+      - name: Bump the version to ${{ env.NEXT }}
+        run: |
+          set -euo pipefail
+          sed -i '0,/"version": *"[^"]*"/s//"version": "'"$NEXT"'"/' src-tauri/tauri.conf.json
+          sed -i '0,/^version = "[^"]*"/s//version = "'"$NEXT"'"/' src-tauri/Cargo.toml
+          grep -m1 '"version"' src-tauri/tauri.conf.json
+          grep -m1 '^version' src-tauri/Cargo.toml
+
+      - name: Unit tests
+        working-directory: src-tauri
+        run: cargo test --release --lib
+
+      - name: Type-check the UI
+        run: npx tsc --noEmit
+
+      - name: Survey after (the new vendored version)
+        id: after
+        working-directory: src-tauri
+        run: |
+          best=0; total=0
+          # MovieBox is occasionally slow for a title; take the better of two runs.
+          for attempt in 1 2; do
+            cargo run --release --bin probe -- survey 2>&1 | tee "$RUNNER_TEMP/after$attempt.txt" || true
+            line=$(grep -o 'SURVEY playable=[0-9]* total=[0-9]*' "$RUNNER_TEMP/after$attempt.txt" | tail -1 || true)
+            p=$(echo "${line:-SURVEY playable=0 total=0}" | sed 's/.*playable=\([0-9]*\).*/\1/')
+            t=$(echo "${line:-SURVEY playable=0 total=0}" | sed 's/.*total=\([0-9]*\)/\1/')
+            [ "$p" -gt "$best" ] && best=$p
+            total=$t
+            [ "$best" -ge "${{ steps.before.outputs.playable }}" ] && [ "$best" -gt 0 ] && break
+          done
+          echo "playable=$best" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+
+      - name: Gate on the survey
+        env:
+          BEFORE: ${{ steps.before.outputs.playable }}
+          AFTER: ${{ steps.after.outputs.playable }}
+          TOTAL: ${{ steps.after.outputs.total }}
+        run: |
+          echo "### Survey: $BEFORE of $TOTAL played before, $AFTER of $TOTAL play now" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$AFTER" -ge 1 ] && [ "$AFTER" -ge $((BEFORE - 1)) ]; then
+            echo "Survey gate passed."
+          elif [ "$SKIP_GATE" = "true" ]; then
+            echo "::warning::Survey gate skipped by request ($BEFORE before, $AFTER after)."
+          elif [ "$DRY_RUN" = "true" ]; then
+            echo "::warning::A real run would stop here: $AFTER of $TOTAL titles play (was $BEFORE). If both are 0, MovieBox may be blocking GitHub's servers; use skip_gate to publish anyway."
+          else
+            echo "::error::Refusing to publish: $AFTER of $TOTAL titles play with the new version, $BEFORE played with the old one. If both are 0, MovieBox may be blocking GitHub's servers; run the workflow by hand with skip_gate to publish anyway."
+            exit 1
+          fi
+
+      # Proves the download path end to end on the new vendored code: a real manifest,
+      # real segments, muxed by the bundled ffmpeg. One retry, because it is a live network test.
+      - name: Download health
+        working-directory: src-tauri
+        run: |
+          cargo test --release --lib dash_health -- --ignored --nocapture \
+            || cargo test --release --lib dash_health -- --ignored --nocapture
+
+      - name: Update the docs and the changelog
+        env:
+          BEFORE: ${{ steps.before.outputs.playable }}
+          AFTER: ${{ steps.after.outputs.playable }}
+          TOTAL: ${{ steps.after.outputs.total }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Upstream's own words, minus anything that would @-mention a stranger from our releases page.
+          gh api "repos/$UPSTREAM/releases/tags/$TAG" --jq '.body // ""' | tr -d '@\r' | head -c 1500 > "$RUNNER_TEMP/upstream-notes.txt" || : > "$RUNNER_TEMP/upstream-notes.txt"
+          python scripts/auto-update-docs.py --old "$CUR" --new "${TAG#v}" --next "$NEXT" \
+            --before "$BEFORE" --after "$AFTER" --total "$TOTAL" --notes-file "$RUNNER_TEMP/upstream-notes.txt"
+          {
+            echo "MovieBox $NEXT: automatic update to MovieBox-Tui ${TAG#v} (was $CUR)."
+            echo
+            echo "Checked before publishing: unit tests pass, the UI type-checks, the download path muxes a real sample, and $AFTER of $TOTAL popular titles play (the version this replaces played $BEFORE)."
+            if [ -s "$RUNNER_TEMP/upstream-notes.txt" ]; then
+              echo
+              echo "What MovieBox-Tui says changed:"
+              echo
+              sed 's/^/> /' "$RUNNER_TEMP/upstream-notes.txt"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+
+      - name: Build the installer
+        run: npm run tauri build
+
+      # A rehearsal of the publish job with a key generated on the spot: signing works, the
+      # feed is well formed, and the version matches. Nothing is uploaded.
+      - name: Rehearse signing and the update feed
+        shell: pwsh
+        run: |
+          $key = Join-Path $env:RUNNER_TEMP "throwaway.key"
+          npx tauri signer generate -w $key -p "" --ci
+          ./scripts/publish-release.ps1 -SkipBuild -DryRun -KeyPath $key -Notes "rehearsal"
+          $feed = Get-Content release/latest.json -Raw | ConvertFrom-Json
+          if ($feed.version -ne $env:NEXT) { throw "Feed says $($feed.version), expected $env:NEXT" }
+          if (-not $feed.platforms.'windows-x86_64'.signature) { throw "Feed has no signature" }
+          Remove-Item $key, "$key.pub" -Force
+
+      - name: Package the result for the publish job
+        run: |
+          set -euo pipefail
+          mkdir out
+          cp "src-tauri/target/release/bundle/nsis/MovieBox_${NEXT}_x64-setup.exe" out/
+          cp "$RUNNER_TEMP/notes.md" out/notes.md
+          git add -A -- vendor src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json \
+            README.md CLAUDE.md SETUP_GUIDE.md BUILD.md TECHNICAL.md MASTERPLAN.md CHANGELOG.md
+          git diff --cached --binary > out/update.patch
+          git diff --cached --stat | tail -3
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: out
+          retention-days: 7
+
+  publish:
+    needs: [check, build]
+    if: >-
+      needs.check.outputs.needed == 'true'
+      && !(github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    runs-on: windows-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write
+      pull-requests: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ needs.check.outputs.upstream_tag }}
+      NEXT: ${{ needs.check.outputs.next_version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: out
+
+      # The change goes to its own branch, never straight to the default branch.
+      - name: Commit the update to its own branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "auto/vendor-$TAG"
+          git apply --index out/update.patch
+          git commit --quiet -m "Re-vendor MovieBox-Tui $TAG and release MovieBox $NEXT (automatic)" -m "Made by .github/workflows/auto-update.yml after the tests, the type check, the download check and the title survey passed."
+          git push origin "auto/vendor-$TAG"
+
+      - name: Sign and publish the release
+        shell: pwsh
+        env:
+          UPDATER_KEY: ${{ secrets.TAURI_UPDATER_KEY }}
+        run: |
+          if (-not $env:UPDATER_KEY) { throw "The TAURI_UPDATER_KEY secret is missing from the 'release' environment." }
+          $key = Join-Path $env:RUNNER_TEMP "updater.key"
+          [IO.File]::WriteAllText($key, $env:UPDATER_KEY)
+          $dir = "src-tauri/target/release/bundle/nsis"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item "out/MovieBox_$($env:NEXT)_x64-setup.exe" $dir
+          try {
+            ./scripts/publish-release.ps1 -SkipBuild -KeyPath $key -Target (git rev-parse HEAD) -Notes (Get-Content out/notes.md -Raw)
+          } finally {
+            Remove-Item $key -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Check the feed installed copies read
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6; do
+            v=$(curl -sL "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latest.json" | python -c "import json,sys;print(json.load(sys.stdin)['version'])" 2>/dev/null || true)
+            [ "$v" = "$NEXT" ] && { echo "The feed serves MovieBox $v."; exit 0; }
+            sleep 10
+          done
+          echo "::error::The feed still says '$v', expected $NEXT."
+          exit 1
+
+      # Needs "Allow GitHub Actions to create and approve pull requests" in the repository
+      # settings; if that is off the release is already out and the branch is pushed.
+      - name: Open a pull request so main catches up
+        continue-on-error: true
+        run: |
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "auto/vendor-$TAG" \
+            --title "Re-vendor MovieBox-Tui $TAG (MovieBox $NEXT, already published)" \
+            --body-file out/notes.md
+
+  notify:
+    needs: [check, build, publish]
+    if: >-
+      failure()
+      && !(github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.upstream_tag }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Auto-update to MovieBox-Tui ${TAG:-latest} did not go through"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
+            echo "An issue for this already exists."
+            exit 0
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The scheduled update stopped before publishing. Nothing was released, so installed copies are unaffected.
+
+          Most likely cause: the new upstream version changed an API the app uses, or the survey could not confirm that titles still play. The log says which: $RUN
+
+          To fix: re-vendor by hand (see SETUP_GUIDE.md), or if only the survey was the problem, run the workflow with skip_gate."
