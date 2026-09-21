@@ -1,6 +1,6 @@
 # API — MovieBox
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 ## Overview
 
@@ -171,10 +171,11 @@ Two constraints learned the hard way:
 | API | Endpoint | Purpose | Auth | Limits |
 |---|---|---|---|---|
 | MovieBox / aoneroom | `api*.aoneroom.com`, `api.inmoviebox.com` — homepage, search, suggest, details, resource page, play info, captions | All catalog and stream metadata | None; signed by the vendored crate, needs the MovieBox client user agent | Undocumented. Busy responses are surfaced as "The server is busy right now" |
-| MovieBox CDN | `*.hakunaymatata.com` and peers — DASH `.mpd` and direct MP4 | Video delivery | Per-stream `Referer`, `User-Agent`, `Cookie` headers from the play info | Returns HTTP 428 to browser-like user agents; 206 to curl/okhttp/libmpv-style agents |
+| MovieBox CDN | `*.hakunaymatata.com` and peers — DASH `.mpd` and direct MP4 | Video delivery | Per-stream `Referer`, `User-Agent`, `Cookie` headers from the play info. Since 2026-09-20 the manifest address itself is base64 inside that cookie (`Edge-Cache-Cookie=urlprefix=…`), and the play info's own `url` is an advert | Returns HTTP 428 to browser-like user agents; 206 to curl/okhttp/libmpv-style agents |
 | 4KHDHub | Search and stream resolution, via the `greenmotors.club` mediator | Second source, on a confident title + year match | None | 15 s search / 20 s resolve. Mirrors resolve again since the v0.1.21 vendor bump; before it every one reported "dead or expired" |
 | Cinemeta | `v3-cinemeta.strem.io` — catalog search | Turns a title + year into an IMDb id so addons can be asked | None | Seeded by default; disabling it disables addons |
-| Stremio addons | Whatever the user installs | Third source | Whatever that addon requires | User-chosen. Only HTTP streams are used; magnets are dropped |
+| Dramachi | `api.nodeobjects.com` — search, title details, episode files | Third source: anime, K-dramas, cartoons, some films, 360p-540p direct files | None | 15 s search / 20 s streams. Films come in parts, joined into one `edl://` timeline |
+| Stremio addons | Whatever the user installs | Fourth source | Whatever that addon requires | User-chosen. Only HTTP streams are used; magnets are dropped |
 | GitHub Releases | `latest.json` plus the signed installer | Auto-update | None; public repo | One GET per launch |
 
 Nothing about the user is sent to any of these: no account, no identifier, no email, no telemetry.

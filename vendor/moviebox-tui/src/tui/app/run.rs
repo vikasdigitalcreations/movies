@@ -306,8 +306,9 @@ impl App {
             },
             Screen::Details => {
                 if let Some(details) = &self.state.selected_details {
-                    if !details.title.is_empty() {
-                        return format!("MovieBox-Tui — {}", details.title);
+                    let clean = crate::providers::moviebox::clean_moviebox_title(&details.title);
+                    if !clean.is_empty() {
+                        return format!("MovieBox-Tui — {clean}");
                     }
                 }
                 "MovieBox-Tui — Details".to_string()
@@ -932,9 +933,21 @@ impl App {
                 })
                 .collect();
 
-            crate::tui::overlay::picker_with_lines(
+            let popup = if self.state.show_settings_popup {
+                crate::tui::overlay::settings_picker_layout(
+                    area,
+                    self.state.settings_category,
+                    &raw_items,
+                    16,
+                )
+            } else {
+                crate::tui::overlay::picker_layout(area, &raw_items, "Apply", 16)
+            };
+
+            crate::tui::overlay::picker_with_lines_at(
                 frame,
                 area,
+                popup,
                 &lines,
                 &raw_items,
                 &mut self.state.theme_list_state,
@@ -998,9 +1011,16 @@ impl App {
                 })
                 .collect();
 
-            crate::tui::overlay::picker_with_lines(
+            let popup = crate::tui::overlay::settings_picker_layout(
+                area,
+                self.state.settings_category,
+                &raw_items,
+                20,
+            );
+            crate::tui::overlay::picker_with_lines_at(
                 frame,
                 area,
+                popup,
                 &lines,
                 &raw_items,
                 &mut self.state.sources_list_state,
@@ -1023,14 +1043,30 @@ impl App {
                 .iter()
                 .map(|k| k.label().to_string())
                 .collect::<Vec<_>>();
-            crate::tui::overlay::picker(
+            let confirm_label = if self.state.settings_player_picker {
+                "Select"
+            } else {
+                "Play"
+            };
+            let popup = if self.state.settings_player_picker {
+                crate::tui::overlay::settings_picker_layout(
+                    area,
+                    self.state.settings_category,
+                    &raw_items,
+                    10,
+                )
+            } else {
+                crate::tui::overlay::picker_layout(area, &raw_items, confirm_label, 10)
+            };
+            crate::tui::overlay::picker_at(
                 frame,
                 area,
+                popup,
                 &raw_items,
                 &mut self.state.player_picker_state,
                 crate::tui::overlay::PickerSpec {
                     title: "",
-                    confirm_label: "Select",
+                    confirm_label,
                     minimum_width: 10,
                     show_counter: false,
                 },
@@ -1075,7 +1111,6 @@ impl App {
         }
 
         if let Some((version, notes)) = &self.state.update_available {
-            use ratatui::layout::Alignment;
             use ratatui::text::{Line, Span};
             use ratatui::widgets::Paragraph;
 
@@ -1105,315 +1140,242 @@ impl App {
                 })
                 .collect();
 
-            let inner_area = crate::tui::widgets::ModalFrame::new(
-                "Update Available",
-                &self.theme,
-                self.state.basic_terminal,
-            )
-            .render(frame, popup_area, area);
-            let divider_char = if self.state.basic_terminal {
-                "-"
-            } else {
-                "─"
-            };
-            let divider_str = divider_char.repeat(inner_area.width as usize);
-
-            let mut text = vec![
-                Line::from(""),
-                Line::from(vec![
-                    Span::styled("Installed: ", self.theme.text_dim),
-                    Span::styled(
-                        format!("v{}", env!("CARGO_PKG_VERSION")),
-                        self.theme
-                            .subtext1
-                            .add_modifier(ratatui::style::Modifier::BOLD),
-                    ),
-                    Span::styled("   →   ", self.theme.accent),
-                    Span::styled("Latest: ", self.theme.text_dim),
-                    Span::styled(
-                        format!("v{version}"),
-                        self.theme.teal.add_modifier(ratatui::style::Modifier::BOLD),
-                    ),
-                ])
-                .alignment(Alignment::Center),
-            ];
-
-            match env {
-                crate::updater::apply::InstallationEnvironment::Homebrew => {
-                    text.push(
-                        Line::from(vec![
-                            Span::styled("Homebrew Managed • Run: ", self.theme.text_dim),
-                            Span::styled(
-                                "brew upgrade moviebox-tui",
-                                self.theme
-                                    .shortcut
-                                    .add_modifier(ratatui::style::Modifier::BOLD),
-                            ),
-                        ])
-                        .alignment(Alignment::Center),
-                    );
-                }
-                crate::updater::apply::InstallationEnvironment::Termux => {
-                    text.push(
-                        Line::from(vec![Span::styled(
-                            "Termux / Android • Re-run installer script to update",
-                            self.theme.accent,
-                        )])
-                        .alignment(Alignment::Center),
-                    );
-                }
-                crate::updater::apply::InstallationEnvironment::Flatpak => {
-                    text.push(
-                        Line::from(vec![Span::styled(
-                            "Flatpak sandbox • Run: flatpak update",
-                            self.theme.accent,
-                        )])
-                        .alignment(Alignment::Center),
-                    );
-                }
-                crate::updater::apply::InstallationEnvironment::Snap => {
-                    text.push(
-                        Line::from(vec![Span::styled(
-                            "Snap sandbox • Run: sudo snap refresh moviebox-tui",
-                            self.theme.accent,
-                        )])
-                        .alignment(Alignment::Center),
-                    );
-                }
-                crate::updater::apply::InstallationEnvironment::ReadOnly => {
-                    text.push(
-                        Line::from(vec![Span::styled(
-                            "Binary is read-only • Update via your package manager",
-                            self.theme.accent,
-                        )])
-                        .alignment(Alignment::Center),
-                    );
-                }
-                crate::updater::apply::InstallationEnvironment::DirectReplace
-                | crate::updater::apply::InstallationEnvironment::WindowsHelper => {}
-            }
-
-            text.push(Line::from(Span::styled(
-                divider_str.clone(),
-                self.theme.surface1,
-            )));
-            text.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    "Release Notes:",
-                    self.theme
-                        .highlight
-                        .add_modifier(ratatui::style::Modifier::BOLD),
-                ),
-            ]));
-            let basic = self.state.basic_terminal;
-
-            if note_lines.is_empty() {
-                text.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled("No release notes provided.", self.theme.text_dim),
-                ]));
-            } else {
-                for line in note_lines.iter().take(display_count) {
-                    let trimmed = line.trim();
-                    let mut spans = Vec::new();
-
-                    if trimmed.starts_with("### ")
-                        || trimmed.starts_with("## ")
-                        || trimmed.starts_with("# ")
-                    {
-                        let title = trimmed.trim_start_matches('#').trim();
-                        spans.push(Span::raw("  "));
-                        if title.eq_ignore_ascii_case("Added") {
-                            spans.push(Span::styled(
-                                "[Added]",
-                                self.theme.teal.add_modifier(ratatui::style::Modifier::BOLD),
-                            ));
-                        } else if title.eq_ignore_ascii_case("Fixed") {
-                            spans.push(Span::styled(
-                                "[Fixed]",
-                                self.theme
-                                    .rating
-                                    .add_modifier(ratatui::style::Modifier::BOLD),
-                            ));
-                        } else if title.eq_ignore_ascii_case("Changed") {
-                            spans.push(Span::styled(
-                                "[Changed]",
-                                self.theme
-                                    .sapphire
-                                    .add_modifier(ratatui::style::Modifier::BOLD),
-                            ));
-                        } else if title.eq_ignore_ascii_case("Performance")
-                            || title.eq_ignore_ascii_case("Perf")
-                        {
-                            spans.push(Span::styled(
-                                "[Performance]",
-                                self.theme
-                                    .accent
-                                    .add_modifier(ratatui::style::Modifier::BOLD),
-                            ));
-                        } else if title.eq_ignore_ascii_case("Security") {
-                            spans.push(Span::styled(
-                                "[Security]",
-                                self.theme
-                                    .error
-                                    .add_modifier(ratatui::style::Modifier::BOLD),
-                            ));
-                        } else {
-                            spans.push(Span::styled(
-                                title,
-                                self.theme
-                                    .highlight
-                                    .add_modifier(ratatui::style::Modifier::BOLD),
-                            ));
-                        }
-                    } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-                        let bullet = trimmed[2..].trim();
-                        spans.push(Span::raw("    "));
-                        spans.push(Span::styled(
-                            if basic { "- " } else { "• " },
-                            self.theme.accent,
-                        ));
-                        if let Some(rest) = bullet.strip_prefix("**") {
-                            if let Some(end) = rest.find("**") {
-                                let title = &rest[..end];
-                                let after = &rest[end + 2..];
-                                let (colon, rest) = if let Some(stripped) = after.strip_prefix(':')
-                                {
-                                    (": ", stripped.trim())
-                                } else {
-                                    ("", after.trim())
-                                };
-                                let clean_rest = rest.replace('`', "");
-                                spans.push(Span::styled(
-                                    title,
-                                    self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
-                                ));
-                                if !colon.is_empty() {
-                                    spans.push(Span::styled(colon, self.theme.subtext1));
-                                }
-                                if !clean_rest.is_empty() {
-                                    let prefix_w =
-                                        4 + 2 + crate::tui::text::width(title) + colon.len();
-                                    let budget =
-                                        (inner_area.width as usize).saturating_sub(prefix_w + 2);
-                                    if budget > 0 {
-                                        spans.push(Span::styled(
-                                            crate::tui::text::truncate_width(&clean_rest, budget)
-                                                .into_owned(),
-                                            self.theme.text_dim,
-                                        ));
-                                    }
-                                }
-                            } else {
-                                let clean = bullet.replace('`', "");
-                                let budget = (inner_area.width as usize).saturating_sub(4 + 2 + 2);
-                                spans.push(Span::styled(
-                                    crate::tui::text::truncate_width(&clean, budget).into_owned(),
-                                    self.theme.text,
-                                ));
-                            }
-                        } else {
-                            let clean = bullet.replace('`', "");
-                            let budget = (inner_area.width as usize).saturating_sub(4 + 2 + 2);
-                            spans.push(Span::styled(
-                                crate::tui::text::truncate_width(&clean, budget).into_owned(),
-                                self.theme.text,
-                            ));
-                        }
-                    } else {
-                        let clean = trimmed.replace('`', "");
-                        let budget = (inner_area.width as usize).saturating_sub(4 + 2);
-                        spans.push(Span::raw("    "));
-                        spans.push(Span::styled(
-                            crate::tui::text::truncate_width(&clean, budget).into_owned(),
-                            self.theme.text_dim,
-                        ));
-                    }
-                    text.push(Line::from(spans));
-                }
-            }
-
-            text.push(Line::from(Span::styled(divider_str, self.theme.surface1)));
-
-            let is_compact_modal = inner_area.width < 58;
+            let title_str = format!("Update Available: v{version}");
+            let is_compact_modal = popup_area.width < 50;
             let buttons = match env {
                 crate::updater::apply::InstallationEnvironment::Homebrew => {
                     if is_compact_modal {
                         vec![
                             Span::styled("[b]", self.theme.shortcut),
-                            Span::styled(" Copy  ", self.theme.text),
+                            Span::styled(" Copy ", self.theme.text),
                             Span::styled("[o]", self.theme.shortcut),
-                            Span::styled(" Web  ", self.theme.text),
-                            Span::styled("[Esc]", self.theme.shortcut),
-                            Span::styled(" Back", self.theme.text),
+                            Span::styled(" GitHub", self.theme.text),
                         ]
                     } else {
                         vec![
                             Span::styled("[b]", self.theme.shortcut),
-                            Span::styled(
-                                " Copy Command    ",
-                                self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
-                            ),
+                            Span::styled(" Copy Command ──── ", self.theme.text),
                             Span::styled("[o]", self.theme.shortcut),
-                            Span::styled(" Open Release Page    ", self.theme.text),
-                            Span::styled("[Esc]", self.theme.shortcut),
-                            Span::styled(" Dismiss", self.theme.text),
+                            Span::styled(" GitHub", self.theme.text),
                         ]
                     }
                 }
                 crate::updater::apply::InstallationEnvironment::Termux
                 | crate::updater::apply::InstallationEnvironment::Flatpak
                 | crate::updater::apply::InstallationEnvironment::Snap
-                | crate::updater::apply::InstallationEnvironment::ReadOnly => {
-                    if is_compact_modal {
-                        vec![
-                            Span::styled("[o]", self.theme.shortcut),
-                            Span::styled(" Web  ", self.theme.text),
-                            Span::styled("[Esc]", self.theme.shortcut),
-                            Span::styled(" Back", self.theme.text),
-                        ]
-                    } else {
-                        vec![
-                            Span::styled("[o]", self.theme.shortcut),
-                            Span::styled(
-                                " Open Release Page    ",
-                                self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
-                            ),
-                            Span::styled("[Esc]", self.theme.shortcut),
-                            Span::styled(" Dismiss", self.theme.text),
-                        ]
-                    }
-                }
+                | crate::updater::apply::InstallationEnvironment::ReadOnly => vec![
+                    Span::styled("[o]", self.theme.shortcut),
+                    Span::styled(" Open GitHub", self.theme.text),
+                ],
                 crate::updater::apply::InstallationEnvironment::DirectReplace
                 | crate::updater::apply::InstallationEnvironment::WindowsHelper => {
                     if is_compact_modal {
                         vec![
                             Span::styled("[u]", self.theme.shortcut),
-                            Span::styled(" Update  ", self.theme.text),
+                            Span::styled(" Update ", self.theme.text),
                             Span::styled("[o]", self.theme.shortcut),
-                            Span::styled(" Web  ", self.theme.text),
-                            Span::styled("[Esc]", self.theme.shortcut),
-                            Span::styled(" Back", self.theme.text),
+                            Span::styled(" GitHub", self.theme.text),
                         ]
                     } else {
                         vec![
                             Span::styled("[u]", self.theme.shortcut),
-                            Span::styled(
-                                " Update Now    ",
-                                self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
-                            ),
+                            Span::styled(" Update ──── ", self.theme.text),
                             Span::styled("[o]", self.theme.shortcut),
-                            Span::styled(" Open Release Page    ", self.theme.text),
-                            Span::styled("[Esc]", self.theme.shortcut),
-                            Span::styled(" Dismiss", self.theme.text),
+                            Span::styled(" GitHub", self.theme.text),
                         ]
                     }
                 }
             };
 
-            text.push(Line::from(buttons).alignment(Alignment::Center));
+            let inner_area = crate::tui::widgets::ModalFrame::new(
+                &title_str,
+                &self.theme,
+                self.state.basic_terminal,
+            )
+            .title_bottom(Line::from(buttons))
+            .render(frame, popup_area, area);
+
+            let mut text = vec![Line::from("")];
+            match env {
+                crate::updater::apply::InstallationEnvironment::Homebrew => {
+                    text.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled("Homebrew Managed • Run: ", self.theme.text_dim),
+                        Span::styled(
+                            "brew upgrade moviebox-tui",
+                            self.theme
+                                .shortcut
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        ),
+                    ]));
+                    text.push(Line::from(""));
+                }
+                crate::updater::apply::InstallationEnvironment::Termux => {
+                    text.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            "Termux / Android • Re-run installer script to update",
+                            self.theme.accent,
+                        ),
+                    ]));
+                    text.push(Line::from(""));
+                }
+                crate::updater::apply::InstallationEnvironment::Flatpak => {
+                    text.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled("Flatpak sandbox • Run: flatpak update", self.theme.accent),
+                    ]));
+                    text.push(Line::from(""));
+                }
+                crate::updater::apply::InstallationEnvironment::Snap => {
+                    text.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            "Snap sandbox • Run: sudo snap refresh moviebox-tui",
+                            self.theme.accent,
+                        ),
+                    ]));
+                    text.push(Line::from(""));
+                }
+                crate::updater::apply::InstallationEnvironment::ReadOnly => {
+                    text.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            "Binary is read-only • Update via package manager",
+                            self.theme.accent,
+                        ),
+                    ]));
+                    text.push(Line::from(""));
+                }
+                crate::updater::apply::InstallationEnvironment::DirectReplace
+                | crate::updater::apply::InstallationEnvironment::WindowsHelper => {}
+            }
+
+            let mut current_category = "Added";
+            let mut rendered_bullets = 0;
+
+            for line in &note_lines {
+                let trimmed = line.trim();
+                if trimmed.starts_with("### ")
+                    || trimmed.starts_with("## ")
+                    || trimmed.starts_with("# ")
+                {
+                    let title = trimmed.trim_start_matches('#').trim();
+                    if title.eq_ignore_ascii_case("Fixed") || title.eq_ignore_ascii_case("Fixes") {
+                        current_category = "Fixed";
+                    } else if title.eq_ignore_ascii_case("Added")
+                        || title.eq_ignore_ascii_case("Features")
+                        || title.eq_ignore_ascii_case("New Features")
+                    {
+                        current_category = "Added";
+                    } else if title.eq_ignore_ascii_case("Changed") {
+                        current_category = "Changed";
+                    } else if title.eq_ignore_ascii_case("Performance")
+                        || title.eq_ignore_ascii_case("Perf")
+                    {
+                        current_category = "Perf";
+                    } else {
+                        current_category = title;
+                    }
+                    continue;
+                }
+
+                if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+                    if rendered_bullets >= display_count {
+                        break;
+                    }
+                    rendered_bullets += 1;
+                    let bullet = trimmed[2..].trim();
+                    let mut spans = vec![Span::raw("  ")];
+
+                    let (badge_style, badge_text) = match current_category {
+                        "Fixed" => (
+                            self.theme
+                                .rating
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                            "[Fixed] ",
+                        ),
+                        "Changed" => (
+                            self.theme
+                                .sapphire
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                            "[Changed] ",
+                        ),
+                        "Perf" => (
+                            self.theme
+                                .accent
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                            "[Perf] ",
+                        ),
+                        _ => (
+                            self.theme.teal.add_modifier(ratatui::style::Modifier::BOLD),
+                            "[Added] ",
+                        ),
+                    };
+                    spans.push(Span::styled(badge_text, badge_style));
+
+                    if let Some(rest) = bullet.strip_prefix("**") {
+                        if let Some(end) = rest.find("**") {
+                            let title = &rest[..end];
+                            let after = &rest[end + 2..];
+                            let (colon, rest) = if let Some(stripped) = after.strip_prefix(':') {
+                                (": ", stripped.trim())
+                            } else {
+                                ("", after.trim())
+                            };
+                            let clean_rest = rest.replace('`', "");
+                            spans.push(Span::styled(
+                                title,
+                                self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
+                            ));
+                            if !colon.is_empty() {
+                                spans.push(Span::styled(colon, self.theme.subtext1));
+                            }
+                            if !clean_rest.is_empty() {
+                                let prefix_w = 2
+                                    + badge_text.len()
+                                    + crate::tui::text::width(title)
+                                    + colon.len();
+                                let budget =
+                                    (inner_area.width as usize).saturating_sub(prefix_w + 2);
+                                if budget > 0 {
+                                    spans.push(Span::styled(
+                                        crate::tui::text::truncate_width(&clean_rest, budget)
+                                            .into_owned(),
+                                        self.theme.text_dim,
+                                    ));
+                                }
+                            }
+                        } else {
+                            let clean = bullet.replace('`', "");
+                            let budget = (inner_area.width as usize)
+                                .saturating_sub(2 + badge_text.len() + 2);
+                            spans.push(Span::styled(
+                                crate::tui::text::truncate_width(&clean, budget).into_owned(),
+                                self.theme.text,
+                            ));
+                        }
+                    } else {
+                        let clean = bullet.replace('`', "");
+                        let budget =
+                            (inner_area.width as usize).saturating_sub(2 + badge_text.len() + 2);
+                        spans.push(Span::styled(
+                            crate::tui::text::truncate_width(&clean, budget).into_owned(),
+                            self.theme.text,
+                        ));
+                    }
+                    text.push(Line::from(spans));
+                }
+            }
+
+            if rendered_bullets == 0 {
+                text.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("No release highlights provided.", self.theme.text_dim),
+                ]));
+            }
             text.push(Line::from(""));
+
             let popup = Paragraph::new(text);
             frame.render_widget(popup, inner_area);
         }
@@ -1428,12 +1390,23 @@ impl App {
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
 
-        let width = 50.min(area.width.saturating_sub(4)).max(36);
-        let height = 7.min(area.height.saturating_sub(2)).max(5);
-        let popup_area = crate::tui::overlay::centered(area, width, height, 36, 50);
+        let width = 42.min(area.width.saturating_sub(4)).max(32);
+        let height = 5.min(area.height.saturating_sub(2)).max(3);
+        let x = area.x + area.width.saturating_sub(width) / 2;
+        let search_y = crate::tui::overlay::home_search_y(area);
+        let y = search_y.min(area.bottom().saturating_sub(height));
+        let popup_area = ratatui::layout::Rect::new(x, y, width, height);
+
+        let target_version = self
+            .state
+            .update_release
+            .as_ref()
+            .map(|r| r.version.as_str())
+            .unwrap_or("latest");
+        let title_str = format!("Updating: v{target_version}");
 
         let inner_area = crate::tui::widgets::ModalFrame::new(
-            "Self-Update in Progress",
+            &title_str,
             &self.theme,
             self.state.basic_terminal,
         )
@@ -1442,13 +1415,6 @@ impl App {
         let spinner =
             crate::tui::widgets::loading_spinner(self.state.tick_count, self.state.basic_terminal);
 
-        let target_version = self
-            .state
-            .update_release
-            .as_ref()
-            .map(|r| r.version.as_str())
-            .unwrap_or("latest");
-
         let progress_msg = self
             .state
             .update_progress_msg
@@ -1456,17 +1422,11 @@ impl App {
             .unwrap_or("Applying update...");
 
         let action_text = if progress_msg.contains("SHA256") || progress_msg.contains("checksum") {
-            "Verifying release checksum...".to_string()
+            "Verifying checksum"
         } else if progress_msg.contains("Extracting") || progress_msg.contains("Applying") {
-            format!("Installing MovieBox-Tui v{target_version}...")
+            "Installing binary"
         } else {
-            format!("Downloading MovieBox-Tui v{target_version}...")
-        };
-
-        let (warn_icon, warn_style) = if self.state.basic_terminal {
-            ("[!] ", self.theme.shortcut)
-        } else {
-            ("⚠ ", self.theme.rating)
+            "Downloading release"
         };
 
         let text = vec![
@@ -1480,22 +1440,7 @@ impl App {
                 ),
                 Span::styled(
                     action_text,
-                    self.theme
-                        .header
-                        .add_modifier(ratatui::style::Modifier::BOLD),
-                ),
-            ])
-            .alignment(Alignment::Center),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled(warn_icon, warn_style),
-                Span::styled(
-                    if self.state.basic_terminal {
-                        "Please wait - do not close terminal"
-                    } else {
-                        "Please wait • do not close terminal"
-                    },
-                    self.theme.text_dim,
+                    self.theme.text.add_modifier(ratatui::style::Modifier::BOLD),
                 ),
             ])
             .alignment(Alignment::Center),
@@ -1608,11 +1553,8 @@ mod tests {
             }
             rendered.push('\n');
         }
-        assert!(rendered.contains("Update Available"));
-        assert!(rendered.contains("Installed:"));
-        assert!(rendered.contains("Latest:"));
+        assert!(rendered.contains("Update Available: v0.1.18"));
         assert!(rendered.contains("v0.1.18"));
-        assert!(rendered.contains("Release Notes:"));
         assert!(!rendered.contains("▌"));
         assert!(rendered.contains("[Added]"));
         assert!(rendered.contains("[Fixed]"));
@@ -1622,7 +1564,6 @@ mod tests {
         assert!(!rendered.contains("**Stream"));
         assert!(rendered.contains("[u]"));
         assert!(rendered.contains("[o]"));
-        assert!(rendered.contains("[Esc]"));
     }
 
     #[test]
@@ -1650,10 +1591,9 @@ mod tests {
             rendered.push('\n');
         }
 
-        assert!(rendered.contains("Self-Update in Progress"));
-        assert!(rendered.contains("Downloading MovieBox-Tui v"));
-        assert!(rendered.contains("⚠"));
-        assert!(rendered.contains("Please wait • do not close terminal"));
+        assert!(rendered.contains("Updating: v"));
+        assert!(rendered.contains("Downloading release"));
+        assert!(!rendered.contains("⚠"));
 
         app.state.basic_terminal = true;
         app.state.update_progress_msg = Some("Applying update...".to_string());
@@ -1671,10 +1611,9 @@ mod tests {
             }
             basic_rendered.push('\n');
         }
-        assert!(basic_rendered.contains("Self-Update in Progress"));
-        assert!(basic_rendered.contains("Installing MovieBox-Tui v"));
-        assert!(basic_rendered.contains("[!]"));
-        assert!(basic_rendered.contains("Please wait - do not close terminal"));
+        assert!(basic_rendered.contains("Updating: v"));
+        assert!(basic_rendered.contains("Installing binary"));
+        assert!(!basic_rendered.contains("[!]"));
 
         let min_backend = TestBackend::new(50, 14);
         let mut min_terminal = Terminal::new(min_backend).unwrap();
@@ -1694,8 +1633,8 @@ mod tests {
             }
             min_rendered.push('\n');
         }
-        assert!(min_rendered.contains("Self-Update in Progress"));
-        assert!(min_rendered.contains("Downloading MovieBox-Tui v"));
-        assert!(min_rendered.contains("Please wait • do not close terminal"));
+        assert!(min_rendered.contains("Updating: v"));
+        assert!(min_rendered.contains("Downloading release"));
+        assert!(!min_rendered.contains("Please wait"));
     }
 }

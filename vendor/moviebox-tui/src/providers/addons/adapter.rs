@@ -60,10 +60,13 @@ pub fn meta_to_catalog_item(item: &MetaItem) -> CatalogItem {
 
     let poster_url = item.poster.clone().or_else(|| item.cover.clone());
 
+    let type_prefix = if is_series { "series" } else { "movie" };
+    let composite_id = format!("{type_prefix}:{}", item.id);
+
     CatalogItem {
         id: ProviderMediaId {
             provider: ProviderKind::Addons,
-            value: item.id.clone(),
+            value: composite_id,
         },
         title,
         media_type: if is_series {
@@ -148,10 +151,13 @@ pub fn meta_detail_to_media_details(detail: &MetaDetail) -> MediaDetails {
         .or_else(|| detail.overview.clone())
         .or_else(|| detail.synopsis.clone());
 
+    let type_prefix = if is_series { "series" } else { "movie" };
+    let composite_id = format!("{type_prefix}:{}", detail.id);
+
     MediaDetails {
         id: ProviderMediaId {
             provider: ProviderKind::Addons,
-            value: detail.id.clone(),
+            value: composite_id,
         },
         title,
         media_type: if is_series {
@@ -645,7 +651,7 @@ mod tests {
         };
 
         let catalog = meta_to_catalog_item(&item);
-        assert_eq!(catalog.id.value, "tt1234");
+        assert_eq!(catalog.id.value, "movie:tt1234");
         assert_eq!(catalog.title, "Test Movie");
         assert_eq!(catalog.media_type, MediaType::Movie);
         assert_eq!(catalog.year.as_deref(), Some("2022"));
@@ -712,7 +718,7 @@ mod tests {
         };
 
         let media = meta_detail_to_media_details(&detail);
-        assert_eq!(media.id.value, "tt5678");
+        assert_eq!(media.id.value, "series:tt5678");
         assert_eq!(media.title, "Test Series");
         assert_eq!(media.media_type, MediaType::Series);
         assert_eq!(media.year.as_deref(), Some("2021"));
@@ -726,5 +732,43 @@ mod tests {
             Some("Pilot episode overview")
         );
         assert_eq!(media.seasons[0].episodes[0].title.as_deref(), Some("Pilot"));
+    }
+
+    #[test]
+    fn test_meta_detail_movie_composite_id() {
+        let detail = MetaDetail {
+            id: "tt9999".to_string(),
+            r#type: "movie".to_string(),
+            name: "Test Movie".to_string(),
+            title: None,
+            poster: Some("https://example.com/movie.jpg".to_string()),
+            cover: None,
+            background: None,
+            logo: None,
+            description: Some("Movie description".to_string()),
+            overview: None,
+            synopsis: None,
+            release_info: Some("2020".to_string()),
+            year: None,
+            released: None,
+            imdb_rating: Some("7.9".to_string()),
+            rating: None,
+            genres: vec!["Sci-Fi".to_string()],
+            genre: Vec::new(),
+            runtime: Some("120m".to_string()),
+            cast: Vec::new(),
+            stars: Vec::new(),
+            director: Vec::new(),
+            directors: Vec::new(),
+            writer: Vec::new(),
+            writers: Vec::new(),
+            videos: Vec::new(),
+        };
+
+        let media = meta_detail_to_media_details(&detail);
+        assert_eq!(media.id.value, "movie:tt9999");
+        assert_eq!(media.title, "Test Movie");
+        assert_eq!(media.media_type, MediaType::Movie);
+        assert!(media.seasons.is_empty());
     }
 }

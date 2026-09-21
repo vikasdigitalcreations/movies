@@ -14,6 +14,8 @@ pub struct ModalFrame<'a> {
     basic_terminal: bool,
     border_style: Option<Style>,
     title_style: Option<Style>,
+    title_bottom: Option<Line<'a>>,
+    title_bottom_alignment: Alignment,
 }
 
 impl<'a> ModalFrame<'a> {
@@ -24,7 +26,19 @@ impl<'a> ModalFrame<'a> {
             basic_terminal,
             border_style: None,
             title_style: None,
+            title_bottom: None,
+            title_bottom_alignment: Alignment::Center,
         }
+    }
+
+    pub fn title_bottom(mut self, bottom: Line<'a>) -> Self {
+        self.title_bottom = Some(bottom);
+        self
+    }
+
+    pub fn title_bottom_alignment(mut self, alignment: Alignment) -> Self {
+        self.title_bottom_alignment = alignment;
+        self
     }
 
     pub fn border_style(mut self, style: Style) -> Self {
@@ -49,6 +63,11 @@ impl<'a> ModalFrame<'a> {
             block = block
                 .title(format!(" {display_title} "))
                 .title_style(self.title_style.unwrap_or(self.theme.title));
+        }
+        if let Some(bottom) = self.title_bottom.clone() {
+            block = block
+                .title_bottom(bottom)
+                .title_alignment(self.title_bottom_alignment);
         }
         let inner = block.inner(area);
         frame.render_widget(block, area);

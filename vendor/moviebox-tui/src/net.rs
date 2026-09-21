@@ -43,10 +43,15 @@ fn fallback_config() -> ResolverConfig {
 fn build_resolver() -> TokioResolver {
     let mut builder = match TokioResolver::builder_tokio() {
         Ok(builder) => builder,
-        Err(_) => TokioResolver::builder_with_config(
-            fallback_config(),
-            TokioConnectionProvider::default(),
-        ),
+        Err(e) => {
+            log::warn!(
+                "system DNS resolver failed ({e}); falling back to public DNS (Cloudflare/Google/Quad9)"
+            );
+            TokioResolver::builder_with_config(
+                fallback_config(),
+                TokioConnectionProvider::default(),
+            )
+        }
     };
     builder.options_mut().ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
     builder.build()
@@ -74,6 +79,8 @@ pub fn http_client_builder() -> reqwest::ClientBuilder {
         .tcp_keepalive(Some(std::time::Duration::from_secs(45)))
         .pool_idle_timeout(Some(std::time::Duration::from_secs(90)))
         .pool_max_idle_per_host(8)
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(60))
 }
 
 pub async fn probe_url(url: &str, timeout: std::time::Duration) -> bool {
@@ -84,15 +91,32 @@ pub async fn probe_url(url: &str, timeout: std::time::Duration) -> bool {
     else {
         return false;
     };
-    if let Ok(resp) = client.head(url).send().await {
-        if resp.status().is_success() || resp.status().is_redirection() {
-            return true;
+    match client.head(url).send().await {
+        Ok(resp) if resp.status().is_success() || resp.status().is_redirection() => return true,
+        Ok(resp) => {
+            log::debug!(
+                "probe HEAD non-success for {}: {}",
+                crate::logging::sanitize_url(url),
+                resp.status()
+            );
+        }
+        Err(e) => {
+            log::debug!(
+                "probe HEAD error for {}: {e}",
+                crate::logging::sanitize_url(url)
+            );
         }
     }
-    if let Ok(resp) = client.get(url).send().await {
-        return resp.status().is_success() || resp.status().is_redirection();
+    match client.get(url).send().await {
+        Ok(resp) => resp.status().is_success() || resp.status().is_redirection(),
+        Err(e) => {
+            log::debug!(
+                "probe GET error for {}: {e}",
+                crate::logging::sanitize_url(url)
+            );
+            false
+        }
     }
-    false
 }
 
 pub fn is_http_url(source: &str) -> bool {

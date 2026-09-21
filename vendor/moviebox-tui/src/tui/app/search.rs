@@ -120,18 +120,26 @@ impl App {
                 Some(true)
             }
             crate::tui::commands::SlashCommand::Settings => {
-                if trimmed.eq_ignore_ascii_case("/config") {
-                    if self.state.is_tv_mode {
-                        self.action_sender.send(Action::ShowTvConfig).ok();
-                        return Some(true);
-                    } else if self.state.active_provider
-                        == crate::providers::models::ProviderKind::Addons
-                    {
-                        self.action_sender.send(Action::ShowAddonManager).ok();
-                        return Some(true);
-                    }
-                }
                 self.action_sender.send(Action::ToggleSettingsPopup).ok();
+                Some(true)
+            }
+            crate::tui::commands::SlashCommand::Config => {
+                if self.state.is_tv_mode {
+                    self.action_sender.send(Action::ShowTvConfig).ok();
+                } else if self.state.active_provider
+                    == crate::providers::models::ProviderKind::Addons
+                {
+                    self.action_sender.send(Action::ShowAddonManager).ok();
+                } else {
+                    let ctrl_p = crate::tui::text::CTRL_P_STR;
+                    self.state.notify(
+                        NotificationKind::Info,
+                        "Configuration",
+                        format!(
+                            "Use /settings for preferences, or switch to Addons ({ctrl_p}) to configure addons."
+                        ),
+                    );
+                }
                 Some(true)
             }
             crate::tui::commands::SlashCommand::Clear => {
@@ -729,5 +737,49 @@ impl App {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_handle_search_command_config_in_streaming_mode_shows_guidance() {
+        let mut app = App::new();
+        app.state.active_provider = ProviderKind::MovieBox;
+        app.state.is_tv_mode = false;
+
+        let handled = app.handle_search_command("/config", "/config");
+        assert_eq!(handled, Some(true));
+        assert!(!app.state.show_settings_popup);
+        assert!(!app.state.addon_manager_popup);
+        assert!(!app.state.tv_config_popup);
+        assert_eq!(app.state.notifications.len(), 1);
+        assert_eq!(app.state.notifications[0].title, "Configuration");
+        assert!(app.state.notifications[0].message.contains("/settings"));
+    }
+
+    #[test]
+    fn test_handle_search_command_config_in_addons_mode_opens_addon_manager() {
+        let mut app = App::new();
+        app.state.active_provider = ProviderKind::Addons;
+        app.state.is_tv_mode = false;
+
+        let handled = app.handle_search_command("/config", "/config");
+        assert_eq!(handled, Some(true));
+        assert!(!app.state.show_settings_popup);
+        assert!(app.state.notifications.is_empty());
+    }
+
+    #[test]
+    fn test_handle_search_command_config_in_tv_mode_opens_tv_config() {
+        let mut app = App::new();
+        app.state.is_tv_mode = true;
+
+        let handled = app.handle_search_command("/config", "/config");
+        assert_eq!(handled, Some(true));
+        assert!(!app.state.show_settings_popup);
+        assert!(app.state.notifications.is_empty());
     }
 }

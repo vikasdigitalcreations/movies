@@ -4,7 +4,6 @@ use moviebox_tui::{
     tui::{
         action::Action,
         app::App,
-        commands::SlashCommand,
         state::{AppState, SettingsCategory, settings_player_label},
         widgets::settings::{
             category_tab_rects, settings_category_tab_at, settings_row_at, settings_row_rects,
@@ -12,58 +11,6 @@ use moviebox_tui::{
     },
 };
 use ratatui::layout::Rect;
-
-#[test]
-fn test_settings_command_parsing_and_aliases() {
-    let state = AppState::default();
-    assert!(SlashCommand::Settings.is_available(&state));
-    assert_eq!(SlashCommand::Settings.name(), "/settings");
-    assert_eq!(
-        SlashCommand::parse("/settings"),
-        Some(SlashCommand::Settings)
-    );
-    assert_eq!(SlashCommand::parse("/pref"), Some(SlashCommand::Settings));
-    assert_eq!(
-        SlashCommand::parse("/preferences"),
-        Some(SlashCommand::Settings)
-    );
-    assert_eq!(
-        SlashCommand::parse("/options"),
-        Some(SlashCommand::Settings)
-    );
-    assert_eq!(SlashCommand::parse("/config"), Some(SlashCommand::Settings));
-    assert_eq!(SlashCommand::parse("/theme"), None);
-    assert_eq!(SlashCommand::parse("/themes"), None);
-    assert_eq!(SlashCommand::parse("/help"), Some(SlashCommand::Help));
-    assert_eq!(SlashCommand::parse("/?"), Some(SlashCommand::Help));
-
-    let suggestions = SlashCommand::suggest(&state, "/");
-    assert_eq!(
-        suggestions,
-        vec![
-            "/settings".to_string(),
-            "/browse".to_string(),
-            "/history".to_string(),
-            "/favorites".to_string(),
-            "/clear".to_string(),
-            "/help".to_string(),
-            "/exit".to_string(),
-        ]
-    );
-
-    let s_sug = SlashCommand::suggest(&state, "/s");
-    assert_eq!(s_sug, vec!["/settings".to_string()]);
-
-    let c_sug = SlashCommand::suggest(&state, "/c");
-    assert_eq!(c_sug, vec!["/clear".to_string()]);
-
-    let p_sug = SlashCommand::suggest(&state, "/p");
-    assert!(p_sug.is_empty());
-
-    let toggle_suggestions = SlashCommand::suggest(&state, "/toggle");
-    assert!(toggle_suggestions.is_empty());
-    assert!(SlashCommand::suggest(&state, "/t").is_empty());
-}
 
 #[test]
 fn test_settings_modal_has_active_modal() {

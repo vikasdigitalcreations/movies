@@ -39,6 +39,7 @@ impl App {
         self.state.tick_count = 0;
         self.reset_transient_overlays();
         self.state.input_mode = crate::tui::state::InputMode::Normal;
+        self.state.active_screen = crate::tui::state::Screen::Home;
         self.state.is_loading = false;
         self.state.clear_search_state();
         self.state.clear_details_state();

@@ -66,7 +66,7 @@ fn test_addon_series_classification_and_default_season_structure() {
     };
 
     let details = meta_detail_to_media_details(&off_campus_series);
-    assert_eq!(details.id.value, "tt32034988");
+    assert_eq!(details.id.value, "series:tt32034988");
     assert_eq!(details.title, "Off Campus");
     assert_eq!(details.media_type, MediaType::Series);
     assert_eq!(details.year.as_deref(), Some("2026"));

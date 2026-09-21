@@ -1,8 +1,7 @@
-name: Stale Issue Lifecycle
-
+name: Close Stale Issues
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -12,20 +11,15 @@ jobs:
   stale:
     runs-on: ubuntu-latest
     steps:
-      - name: Close stale needs-info issues
-        uses: actions/stale@v9
+      - uses: actions/stale@v9
         with:
-          only-labels: "needs-info"
-          days-before-issue-stale: 7
-          days-before-issue-close: 2
-          stale-issue-label: "stale"
+          stale-issue-label: needs-info
+          close-issue-label: needs-info
+          days-before-stale: 7
+          days-before-close: 0
           stale-issue-message: >
-            This issue has been marked as stale because it has been awaiting required
-            information for 7 days without a response. It will be closed in 2 days if
-            no update is provided.
-          close-issue-message: >
-            This issue was closed due to inactivity and missing reproduction details.
-            If the problem persists, please submit a new issue with complete reproduction steps.
-          exempt-issue-labels: "pinned,security"
-          days-before-pr-stale: -1
-          days-before-pr-close: -1
+            This issue has had the `needs-info` label for 7 days without response
+            and is now closed. Reopen with actionable reproduction details once available.
+          close-issue-message: ''
+          only-labels: needs-info
+          operations-per-run: 50

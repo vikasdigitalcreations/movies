@@ -16,6 +16,7 @@ pub struct MovieBoxService {
     pub circleftp_client: CircleFtpClient,
     pub dhakaflix_client: DhakaFlixClient,
     pub addon_client: crate::providers::addons::AddonClient,
+    pub dramachi_client: crate::providers::dramachi::DramachiClient,
     pub http_client: reqwest::Client,
 }
 
@@ -38,6 +39,7 @@ impl MovieBoxService {
             circleftp_client: CircleFtpClient::new(),
             dhakaflix_client: DhakaFlixClient::new(),
             addon_client: crate::providers::addons::AddonClient::new(),
+            dramachi_client: crate::providers::dramachi::DramachiClient::new(),
             http_client,
         }
     }
@@ -57,6 +59,7 @@ impl MovieBoxService {
             ProviderKind::BdixCircleFtp => Provider::capabilities(&self.circleftp_client),
             ProviderKind::BdixDhakaFlix => Provider::capabilities(&self.dhakaflix_client),
             ProviderKind::Addons => Provider::capabilities(&self.addon_client),
+            ProviderKind::Dramachi => Provider::capabilities(&self.dramachi_client),
         }
     }
 
@@ -90,6 +93,7 @@ impl MovieBoxService {
                 Provider::search(&self.dhakaflix_client, query, page).await
             }
             ProviderKind::Addons => Provider::search(&self.addon_client, query, page).await,
+            ProviderKind::Dramachi => Provider::search(&self.dramachi_client, query, page).await,
         }
     }
 
@@ -116,10 +120,6 @@ impl MovieBoxService {
             .fetch_catalog(&base_url, r#type, catalog_id, None)
             .await
             .map_err(|e| e.to_string())?;
-
-        if metas.is_empty() {
-            return Err("No catalog items found".to_string());
-        }
 
         let items: Vec<CatalogItem> = metas
             .iter()
@@ -161,6 +161,7 @@ impl MovieBoxService {
                 Provider::details(&self.dhakaflix_client, subject_id).await
             }
             ProviderKind::Addons => Provider::details(&self.addon_client, subject_id).await,
+            ProviderKind::Dramachi => Provider::details(&self.dramachi_client, subject_id).await,
         }
     }
 
@@ -304,6 +305,7 @@ impl MovieBoxService {
         &self,
         url: &str,
         headers: &[(String, String)],
+        preferred_filename: Option<&str>,
     ) -> Result<PathBuf, String> {
         let mut request = self.http_client.get(url);
         for (name, value) in headers {
@@ -332,16 +334,19 @@ impl MovieBoxService {
         let base_dir = resolve_subtitle_dir();
         let _ = std::fs::create_dir_all(&base_dir);
 
-        let path = base_dir.join(format!(
-            "{}_{}.{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos(),
-            extension
-        ));
-
+        let file_stem = if let Some(pref) = preferred_filename {
+            crate::download::safe_file_stem(pref)
+        } else {
+            format!(
+                "{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        };
+        let path = base_dir.join(format!("{file_stem}.{extension}"));
         tokio::fs::write(&path, bytes)
             .await
             .map_err(|e| format!("Failed to write subtitle file: {e}"))?;

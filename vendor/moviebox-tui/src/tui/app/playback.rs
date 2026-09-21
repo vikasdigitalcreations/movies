@@ -298,6 +298,19 @@ impl App {
                 (rows as u32 * cell_height).clamp(180, 1080),
             )
         });
+        let preferred_sub_name = history_item.as_ref().map(|item| {
+            if item.season > 0 || item.episode > 0 {
+                format!(
+                    "{} - S{:02}E{:02}",
+                    item.title,
+                    item.season.max(1),
+                    item.episode.max(1)
+                )
+            } else {
+                item.title.clone()
+            }
+        });
+
         tokio::spawn(async move {
             let mut local_subtitle = subtitle.clone();
             let mut temporary_subtitle = None;
@@ -309,12 +322,14 @@ impl App {
             ) && let Some(ref url) = subtitle
             {
                 let download_res = crate::service::MovieBoxService::new()
-                    .download_subtitle_file(url, &headers)
+                    .download_subtitle_file(url, &headers, preferred_sub_name.as_deref())
                     .await;
                 match download_res {
                     Ok(path) => {
                         local_subtitle = Some(path.to_string_lossy().into_owned());
-                        temporary_subtitle = Some(path);
+                        if !matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
+                            temporary_subtitle = Some(path);
+                        }
                     }
                     Err(_) => {
                         local_subtitle = None;
@@ -346,7 +361,9 @@ impl App {
                     Ok(local_url) => {
                         let sub_url =
                             if matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
-                                if let Some(remote_sub) = &subtitle {
+                                if local_subtitle.is_some() {
+                                    local_subtitle.clone()
+                                } else if let Some(remote_sub) = &subtitle {
                                     if let Some(authority) = local_url
                                         .strip_prefix("http://")
                                         .and_then(|s| s.split('/').next())
@@ -357,10 +374,10 @@ impl App {
                                         );
                                         Some(format!("http://{authority}/sub/{encoded}"))
                                     } else {
-                                        local_subtitle.clone()
+                                        None
                                     }
                                 } else {
-                                    local_subtitle.clone()
+                                    None
                                 }
                             } else {
                                 local_subtitle.clone()
@@ -451,6 +468,7 @@ impl App {
                     })),
                 }
             } else {
+                log::info!("launching player: {kind:?}");
                 spawn_configured_command(command, false)
             };
 
@@ -494,6 +512,10 @@ impl App {
 
                         match result {
                             Ok(status) if status.success() => {
+                                log::info!(
+                                    "player {kind:?} finished cleanly (duration: {}s)",
+                                    start_time.elapsed().as_secs()
+                                );
                                 let has_tracker = tracker_opts.is_some()
                                     && matches!(
                                         kind,
@@ -663,8 +685,14 @@ fn is_user_quit(status: &std::process::ExitStatus) -> bool {
 }
 
 fn clean_player_error(code: Option<i32>, signal: Option<i32>, stderr: &str) -> String {
-    if !stderr.is_empty() {
-        return stderr.to_string();
+    let trimmed = stderr.trim();
+    if !trimmed.is_empty() {
+        let bounded = if trimmed.len() > 512 {
+            &trimmed[..512]
+        } else {
+            trimmed
+        };
+        return bounded.to_string();
     }
 
     if let Some(value) = code {
@@ -697,6 +725,7 @@ impl App {
                 self.state.is_resolving_playback = true;
                 if self.current_subject_provider() == ProviderKind::FourKHdHub
                     || self.current_subject_provider() == ProviderKind::Addons
+                    || self.current_subject_provider() == ProviderKind::Dramachi
                     || self.current_subject_provider().is_bdix()
                 {
                     if let Some(release) = self.get_selected_release() {
@@ -722,6 +751,7 @@ impl App {
                             source_label: first_mirror.label.clone(),
                         };
                         let client = if release.provider == ProviderKind::Addons
+                            || release.provider == ProviderKind::Dramachi
                             || release.provider == ProviderKind::BdixCircleFtp
                             || release.provider == ProviderKind::BdixDhakaFlix
                         {

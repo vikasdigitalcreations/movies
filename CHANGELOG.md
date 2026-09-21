@@ -2,6 +2,19 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-09-21 — 1.3.2
+
+### Fixed
+- **MovieBox plays again.** It had not stopped serving video: since 2026-09-20 its play-info answer puts the "update the app" advert in the `url` field and hands out the real stream only through `signCookie`, in a new `Edge-Cache-Cookie=urlprefix=<base64>:sign=…:t=…` form instead of the CloudFront policy the old code could read. Upstream MovieBox-Tui v0.1.22 decodes that prefix into the DASH manifest address (`…/dash/<id>/index.mpd`). Re-vendoring it took the survey of 17 popular titles from **0 playable to 15**, and `probe chain` over 20 titles from **14 with a playable source to 19**, Jawan, Animal, Kalki 2898 AD, Stree 2 and Munjya included. Ten anime and cartoon titles (Doraemon, Motu Patlu, Oggy, Demon Slayer, One Piece and others) all play from MovieBox, mostly in Hindi. The DASH downloader needed no change: `dash_health` downloads and muxes a sample through the new cookie.
+- The "nothing found" message pointed at "Settings → Addons"; the panel is called **Extra sources**.
+
+### Added
+- **Dramachi as a fourth source**, after 4KHDHub and before the user's addons (`dramachi_streams` in `src-tauri/src/commands/streams.rs`). Added upstream in v0.1.22, it serves direct files for anime, K-dramas, cartoons and some films -- 8 of 10 test titles -- but only at 360p-540p, which is why it comes last. It uses the same exact-title rule as 4KHDHub, and drops the year Dramachi appends to film names ("Parasite 2019") only when it agrees with the year sought. Films arrive split into parts of about an hour; these are joined into one `edl://` timeline so they play and seek as one file, and are marked not downloadable because the downloader fetches a single file.
+- `probe dramachi` (coverage of the Dramachi provider) and `probe dtier` (the app's Dramachi tier on one title); `probe chain` now walks the Dramachi tier too.
+
+### Changed
+- Vendored MovieBox-Tui v0.1.21 → v0.1.22, a clean tree replacement (our copy was byte-identical to upstream v0.1.21). `download_subtitle_file` gained a preferred-filename argument; the app passes `None`.
+
 ## 2026-09-20 — 1.3.1
 
 ### Fixed

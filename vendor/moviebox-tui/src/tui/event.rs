@@ -22,6 +22,26 @@ impl EventHandler {
                 }
             }
         });
+        #[cfg(unix)]
+        tokio::spawn({
+            let signal_sender = sender.clone();
+            async move {
+                use tokio::signal::unix::{SignalKind, signal};
+                let mut sigterm = match signal(SignalKind::terminate()) {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                let mut sighup = match signal(SignalKind::hangup()) {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                tokio::select! {
+                    _ = sigterm.recv() => {}
+                    _ = sighup.recv() => {}
+                }
+                let _ = signal_sender.send(Action::Quit).await;
+            }
+        });
 
         tokio::spawn(async move {
             let mut tick_interval = tokio::time::interval(tick_rate);

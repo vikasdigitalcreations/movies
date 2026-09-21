@@ -114,6 +114,7 @@ impl App {
         state.last_update_check = config.last_update_check;
         state.moviebox_enabled = config.moviebox_enabled;
         state.fourkhdhub_enabled = config.fourkhdhub_enabled;
+        state.dramachi_enabled = config.dramachi_enabled;
         state.bdix_circleftp_enabled = config.bdix_circleftp_enabled;
         state.bdix_dhakaflix_enabled = config.bdix_dhakaflix_enabled;
         state.bdix_probed = config.bdix_probed;
@@ -239,6 +240,7 @@ impl App {
             active_theme: self.state.active_theme_kind.clone(),
             moviebox_enabled: self.state.moviebox_enabled,
             fourkhdhub_enabled: self.state.fourkhdhub_enabled,
+            dramachi_enabled: self.state.dramachi_enabled,
             bdix_circleftp_enabled: self.state.bdix_circleftp_enabled,
             bdix_dhakaflix_enabled: self.state.bdix_dhakaflix_enabled,
             bdix_probed: self.state.bdix_probed,
@@ -334,7 +336,8 @@ impl App {
                     Ok(channels) => all_channels.extend(channels),
                     Err(error) => {
                         failed += 1;
-                        log::warn!("tv playlist failed ({source}): {error}");
+                        let safe_source = crate::logging::sanitize_url(source);
+                        log::warn!("tv playlist failed ({safe_source}): {error}");
                     }
                 }
             }
@@ -396,7 +399,6 @@ impl App {
             AddonManagerRow::AddUrl => {
                 self.action_sender.send(Action::AddonInputToggle(true)).ok();
             }
-            AddonManagerRow::Header(_) => {}
         }
     }
 }

@@ -41,7 +41,7 @@ and length is capped.
 - **Movie downloads:** Saved under `<base_dir>/Movies/<Title>/<Title>.<ext>` (and subtitle `<Title>.<lang>.<sub_ext>`).
 - **Default path:** Files go to the user's OS download directory (`~/Downloads/MovieBox-TUI`). On Android (Termux), the engine prefers shared `~/storage/downloads` when present, scoped strictly to verified Termux environments.
 - **Custom path:** Users can set a custom download directory in `/settings` → General → Download Folder or reset to default. Target directories are validated with a write probe before saving, and the code creates the `MovieBox-TUI` subfolder hierarchy (`Movies/` and `Series/`). If custom storage becomes unavailable at runtime, the engine falls back to the default download location.
-
+- **Path Containment:** Destination paths are validated against the canonical download base directory before file creation, with Windows verbatim `\\?\` prefix normalization, preventing directory escape.
 ## Contextual triggers & Seasons
 
 - **Contextual trigger**: Pressing `d` (or clicking `[Download]`) while focused on the **Seasons** pane prompts to download all episodes of the selected season. Triggering download while on the **Episodes** or **Streams** pane prompts to download only that single episode.

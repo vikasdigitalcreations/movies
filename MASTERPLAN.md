@@ -1,6 +1,6 @@
 # Masterplan — MovieBox
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 ## Vision / problem solved
 
@@ -51,7 +51,7 @@ MovieBox keeps all of that app's working logic and replaces the terminal with a 
             |  path dependency
             v
 +---------------------------------------------------------------+
-|  vendor/moviebox-tui v0.1.21 (MovieBoxService, providers,      |
+|  vendor/moviebox-tui v0.1.22 (MovieBoxService, providers,      |
 |  download, history, favorites)  ->  MovieBox + 4KHDHub APIs    |
 +---------------------------------------------------------------+
 ```

@@ -329,15 +329,71 @@ async fn main() {
                     &svc, &raw, first.year.as_deref(), se, ep, 0, 2,
                 )
                 .await;
-                let line = match &t2 {
+                let mut line = match &t2 {
                     Ok(list) => format!("4KHDHub {} stream(s)", list.len()),
                     Err(e) => format!("4KHDHub: {e}"),
                 };
-                if real > 0 || t2.is_ok() { served += 1; }
+                // tier 3, only consulted when the first two had nothing, as in the app
+                let mut t3_ok = false;
+                if real == 0 && t2.is_err() {
+                    let t3 = moviebox_lib::commands::streams::dramachi_streams(&svc, &raw, first.year.as_deref(), se, ep).await;
+                    t3_ok = t3.is_ok();
+                    line += &match t3 {
+                        Ok(list) => format!(" | Dramachi {} stream(s) at {}p", list.len(), list[0].height),
+                        Err(e) => format!(" | Dramachi: {e}"),
+                    };
+                }
+                if real > 0 || t2.is_ok() || t3_ok { served += 1; }
                 let _ = clean;
                 println!("{t:<20} | {tier1:<11} | mb=\"{raw}\" ({year}) | {line}");
             }
             println!("\n{} of {} titles have a playable tier", served, titles.len());
+        }
+        // Try the Dramachi provider (added upstream in v0.1.22) on a few titles:
+        // `probe dramachi "Squid Game" "Naruto"`. Reports search hit, episodes and a byte fetch.
+        // The app's Dramachi tier on its own, with MovieBox-style titles:
+        // `probe dtier "Parasite [Hindi]" 2019 0 0`
+        "dtier" => {
+            let t = args.get(2).cloned().unwrap_or_default();
+            let y = args.get(3).cloned().filter(|y| !y.is_empty());
+            let se: usize = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let ep: usize = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(0);
+            match moviebox_lib::commands::streams::dramachi_streams(&svc, &t, y.as_deref(), se, ep).await {
+                Ok(list) => for s in list { println!("{t} -> {} {}p size={:?} {}", s.source, s.height, s.size, s.url); },
+                Err(e) => println!("{t} -> {e}"),
+            }
+        }
+        "dramachi" => {
+            let titles: Vec<String> = if args.len() > 2 { args[2..].to_vec() } else {
+                ["Squid Game", "Crash Landing on You", "Naruto", "One Piece", "Demon Slayer",
+                 "Parasite", "Doraemon", "Shin Chan", "Inception", "Jawan"].iter().map(|s| s.to_string()).collect()
+            };
+            let http = reqwest::Client::new();
+            for t in &titles {
+                let hits = match svc.search_typed(ProviderKind::Dramachi, t, 1).await {
+                    Ok(v) => v,
+                    Err(e) => { println!("{t:<22} search error: {e}"); continue; }
+                };
+                let Some(first) = hits.first() else { println!("{t:<22} no hit"); continue; };
+                let id = first.id.value.clone();
+                let d = match svc.details_typed(ProviderKind::Dramachi, &id).await {
+                    Ok(d) => d,
+                    Err(e) => { println!("{t:<22} hit={:?} details error: {e}", first.title); continue; }
+                };
+                let (se, ep) = d.seasons.first().and_then(|s| s.episodes.first().map(|e| (s.number, e.number))).unwrap_or((0, 0));
+                let rels = ReleaseProvider::episode_streams(&svc.dramachi_client, &id, se, ep).await;
+                match rels {
+                    Ok(r) if !r.is_empty() => {
+                        let m = &r[0].mirrors[0];
+                        let mut req = http.get(&m.resolver_url).header("Range", "bytes=0-255");
+                        for (k, v) in &m.headers { req = req.header(k.as_str(), v.as_str()); }
+                        let st = req.send().await.map(|x| x.status().as_u16()).unwrap_or(0);
+                        println!("{t:<22} hit={:?} ({:?}) seasons={} S{se}E{ep}: {} release(s) q={:?} http={st}", d.title, d.year, d.seasons.len(), r.len(), r[0].quality);
+                    }
+                    Ok(_) => println!("{t:<22} hit={:?} no streams", d.title),
+                    Err(e) => println!("{t:<22} hit={:?} streams error: {e}", d.title),
+                }
+            }
         }
         // Check the addon bridge: title -> IMDb id -> streams.
         // `cargo run --bin probe -- addons "Inception" 2010`

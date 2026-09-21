@@ -14,6 +14,7 @@ pub struct Config {
     pub active_theme: String,
     pub moviebox_enabled: bool,
     pub fourkhdhub_enabled: bool,
+    pub dramachi_enabled: bool,
     pub bdix_circleftp_enabled: bool,
     pub bdix_dhakaflix_enabled: bool,
     pub bdix_probed: bool,
@@ -33,6 +34,7 @@ impl Default for Config {
             active_theme: String::new(),
             moviebox_enabled: true,
             fourkhdhub_enabled: true,
+            dramachi_enabled: true,
             bdix_circleftp_enabled: false,
             bdix_dhakaflix_enabled: false,
             bdix_probed: false,
@@ -135,6 +137,12 @@ pub fn cache_dir() -> PathBuf {
 }
 
 pub fn logs_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(dir) = dirs::data_local_dir() {
+            return dir.join(APP_NAME).join("logs");
+        }
+    }
     data_dir()
         .map(|dir| dir.join("logs"))
         .unwrap_or_else(|| std::env::temp_dir().join(APP_NAME).join("logs"))

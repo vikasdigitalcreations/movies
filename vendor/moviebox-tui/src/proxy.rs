@@ -264,14 +264,34 @@ async fn handle_connection(
             return Ok(());
         }
     };
+    let extracted_host = extract_host_authority(&target_url);
+    if let Some(allowed_host) = target_host {
+        let sub_host = subtitle_url.and_then(extract_host_authority);
+        let is_allowed = extracted_host.as_deref() == Some(allowed_host)
+            || (sub_host.is_some() && extracted_host == sub_host);
+        if !is_allowed {
+            let response =
+                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            writer.write_all(response.as_bytes()).await?;
+            return Ok(());
+        }
+    }
 
     let mut req = match method {
         "HEAD" => client.head(&target_url),
         _ => client.get(&target_url),
     };
 
-    for (name, val) in auth_headers {
-        req = req.header(name.as_str(), val.as_str());
+    if extracted_host.as_deref() == target_host {
+        for (name, val) in auth_headers {
+            req = req.header(name.as_str(), val.as_str());
+        }
+    } else {
+        for (name, val) in auth_headers {
+            if name.eq_ignore_ascii_case("user-agent") {
+                req = req.header(name.as_str(), val.as_str());
+            }
+        }
     }
     if let Some(range) = range_header {
         req = req.header("Range", range);
@@ -407,7 +427,10 @@ fn extract_target_url(path_and_query: &str) -> Option<String> {
     let raw = path_and_query.strip_prefix('/')?;
     if let Some(rest) = raw.strip_prefix("sub/") {
         if let Ok(decoded) = percent_encoding::percent_decode_str(rest).decode_utf8() {
-            return Some(decoded.into_owned());
+            let s = decoded.into_owned();
+            if s.starts_with("http://") || s.starts_with("https://") {
+                return Some(s);
+            }
         }
     }
     if let Some(rest) = raw.strip_prefix("https/") {
@@ -500,6 +523,20 @@ mod tests {
         );
         assert_eq!(extract_target_url("/invalid/path"), None);
     }
+    #[test]
+    fn test_extract_target_url_sub_rejects_non_http() {
+        assert_eq!(
+            extract_target_url("/sub/file%3A%2F%2F%2Fetc%2Fpasswd"),
+            None
+        );
+        assert_eq!(extract_target_url("/sub/data%3Atext%2Fhtml%2Chello"), None);
+        assert!(
+            extract_target_url("/sub/https%3A%2F%2Fcdn.example.com%2Fsub.vtt")
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("https://")
+        );
+    }
 
     #[test]
     fn test_extract_host_authority_strips_path_preserves_port() {
@@ -512,6 +549,22 @@ mod tests {
             Some("cdn.example.com:8080")
         );
         assert_eq!(extract_host_authority("not-a-url"), None);
+    }
+    #[test]
+    fn test_host_whitelist_allows_target_and_subtitle_hosts() {
+        let target_host = "video.example.com";
+        let subtitle_url = "https://captions.example.com/sub.srt";
+        let sub_host = extract_host_authority(subtitle_url);
+
+        let is_allowed = |url: &str| -> bool {
+            let host = extract_host_authority(url);
+            host.as_deref() == Some(target_host) || (sub_host.is_some() && host == sub_host)
+        };
+
+        assert!(is_allowed("https://video.example.com/chunk.m4s"));
+        assert!(is_allowed("https://captions.example.com/sub.srt"));
+        assert!(!is_allowed("https://evil.example.com/steal"));
+        assert!(!is_allowed("https://sub.evil.com/fake"));
     }
 
     #[test]

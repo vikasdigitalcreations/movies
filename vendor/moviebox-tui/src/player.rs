@@ -410,7 +410,8 @@ fn mpv_command(
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
     }
-
+    command.arg(format!("{prefix}ytdl-format=bestvideo+bestaudio/best"));
+    command.arg(format!("{prefix}hls-bitrate=max"));
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("{prefix}start={start}"));
@@ -462,8 +463,13 @@ fn mpv_command(
         command.arg(format!("{opt}={sub_path}"));
     }
 
-    command.arg(url);
-
+    if executable.starts_with("flatpak run ")
+        && (url.starts_with('/') || url.starts_with("file://"))
+    {
+        command.arg("@@").arg(url).arg("@@");
+    } else {
+        command.arg(url);
+    }
     command
 }
 
@@ -627,7 +633,7 @@ fn vlc_command(
             .arg(format!("--height={height}"));
     }
     command.arg("--play-and-exit");
-
+    command.arg("--adaptive-logic=highest");
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("--start-time={start}"));
@@ -646,7 +652,13 @@ fn vlc_command(
         command.arg(format!("--sub-file={sub_path}"));
     }
 
-    command.arg(url);
+    if executable.starts_with("flatpak run ")
+        && (url.starts_with('/') || url.starts_with("file://"))
+    {
+        command.arg("@@").arg(url).arg("@@");
+    } else {
+        command.arg(url);
+    }
     command
 }
 
@@ -708,17 +720,57 @@ fn query_windows_registry_value(key: &str, value_name: Option<&str>) -> Option<S
                 .iter()
                 .position(|&p| p == "REG_SZ" || p == "REG_EXPAND_SZ")
             {
+                let is_expand = parts[pos] == "REG_EXPAND_SZ";
                 if pos + 1 < parts.len() {
                     let val = parts[pos + 1..].join(" ");
                     let clean = val.trim_matches('"').trim();
                     if !clean.is_empty() {
-                        return Some(clean.to_string());
+                        let expanded = if is_expand {
+                            expand_env_vars(clean)
+                        } else {
+                            clean.to_string()
+                        };
+                        return Some(expanded);
                     }
                 }
             }
         }
     }
     None
+}
+
+#[cfg(target_os = "windows")]
+fn expand_env_vars(raw: &str) -> String {
+    let mut result = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '%' {
+            let mut var_name = String::new();
+            let mut found_end = false;
+            for next_ch in chars.by_ref() {
+                if next_ch == '%' {
+                    found_end = true;
+                    break;
+                }
+                var_name.push(next_ch);
+            }
+            if found_end && !var_name.is_empty() {
+                if let Ok(val) = std::env::var(&var_name) {
+                    result.push_str(&val);
+                } else {
+                    result.push('%');
+                    result.push_str(&var_name);
+                    result.push('%');
+                }
+            } else {
+                result.push('%');
+                result.push_str(&var_name);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 pub fn windows_mpv_candidate_paths(

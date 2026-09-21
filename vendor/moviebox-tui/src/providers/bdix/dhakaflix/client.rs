@@ -96,7 +96,7 @@ impl DhakaFlixClient {
                 .timeout(Duration::from_secs(5))
                 .user_agent(crate::net::DEFAULT_BROWSER_USER_AGENT)
                 .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+                .expect("dhakaflix http client"),
             recent_fails: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -413,10 +413,6 @@ impl DhakaFlixClient {
         }
 
         Ok(releases)
-    }
-
-    pub async fn resolve_release(&self, resolver_url: &str) -> Result<String, DhakaFlixError> {
-        Ok(resolver_url.to_string())
     }
 }
 

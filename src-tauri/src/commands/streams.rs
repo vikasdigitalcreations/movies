@@ -145,6 +145,9 @@ pub async fn streams(
     if let Ok(list) = fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred.unwrap_or(0), 4).await {
         return Ok(list);
     }
+    if let Ok(list) = dramachi_streams(&state.service, &title, year.as_deref(), season, episode).await {
+        return Ok(list);
+    }
     // Last, whatever the user's own addons offer. They are tried after the built-in
     // sources because they are slower and entirely user-configured, but they are the
     // only tier that keeps working when both built-in providers go dark.
@@ -166,7 +169,7 @@ fn dead_end(problem: &StreamProblem) -> String {
     }
     match problem {
         StreamProblem::Provider(e) => e.clone(),
-        _ => "No source has this title right now. Adding a stream addon in Settings \u{2192} Addons gives the app somewhere else to look.".into(),
+        _ => "No source has this title right now. Adding a stream addon in Settings \u{2192} Extra sources gives the app somewhere else to look.".into(),
     }
 }
 
@@ -188,7 +191,7 @@ pub async fn subtitles(state: State<'_, AppState>, id: String, resource_id: Stri
 /// Download a subtitle to a local file mpv can load (URLs may need headers).
 #[tauri::command]
 pub async fn fetch_subtitle(state: State<'_, AppState>, url: String) -> CmdResult<String> {
-    let path = state.service.download_subtitle_file(&url, &[]).await?;
+    let path = state.service.download_subtitle_file(&url, &[], None).await?;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -360,14 +363,95 @@ pub async fn other_source_streams(
     if let Ok(list) = fourk_streams(service, title, year, season, episode, preferred, 4).await {
         return Ok(list);
     }
+    if let Ok(list) = dramachi_streams(service, title, year, season, episode).await {
+        return Ok(list);
+    }
     crate::commands::addons::addon_streams_for(title, year, season > 0 || episode > 0, season, episode).await
 }
 
 /// "Try another source", kept for the player's mid-playback retry.
 #[tauri::command]
 pub async fn alternate_source(state: State<'_, AppState>, title: String, year: Option<String>, season: usize, episode: usize, preferred: u64) -> CmdResult<StreamDto> {
-    let mut list = fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred, 4).await?;
+    let mut list = match fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred, 4).await {
+        Ok(list) => list,
+        Err(e) => dramachi_streams(&state.service, &title, year.as_deref(), season, episode).await.map_err(|_| e)?,
+    };
     Ok(list.remove(0))
+}
+
+/// Streams from Dramachi, the last built-in source.
+///
+/// Its files top out at 540p, so it only ever stands in when MovieBox and 4KHDHub both
+/// come back empty. It is strongest exactly where they are weakest: anime, K-dramas and
+/// children's cartoons. The same exact-title rule as 4KHDHub applies.
+pub async fn dramachi_streams(
+    service: &MovieBoxService,
+    title: &str,
+    year: Option<&str>,
+    season: usize,
+    episode: usize,
+) -> Result<Vec<StreamDto>, String> {
+    let clean = strip_season(moviebox_tui::providers::moviebox::clean_moviebox_title(title)).trim().to_string();
+    let want = norm_title(title);
+    let year = year.unwrap_or_default();
+    let is_series = season > 0 || episode > 0;
+    let hits = tokio::time::timeout(Duration::from_secs(15), service.search_typed(ProviderKind::Dramachi, &clean, 1))
+        .await
+        .map_err(|_| "The other source took too long to respond.".to_string())?
+        .unwrap_or_default();
+    let Some(item) = hits.iter().find(|c| dramachi_title_matches(&c.title, &want, year, is_series)) else {
+        return Err("No other source has this title.".into());
+    };
+    let rels = tokio::time::timeout(Duration::from_secs(20), ReleaseProvider::episode_streams(&service.dramachi_client, &item.id.value, season, episode))
+        .await
+        .map_err(|_| "The other source took too long to respond.".to_string())?
+        .map_err(|_| "No other source has this title.".to_string())?;
+    let mut rels: Vec<Release> = rels.into_iter().filter(|r| !r.mirrors.is_empty()).collect();
+    // A film comes back in parts ("Parasite_2019_001", "_002", about an hour each), not
+    // as alternatives. Playing the first alone would stop halfway, so the parts are
+    // joined into one timeline that mpv plays and seeks as a single file.
+    if !is_series && rels.len() > 1 {
+        rels.sort_by(|a, b| a.filename.cmp(&b.filename));
+        let urls: Vec<&str> = rels.iter().map(|r| r.mirrors[0].resolver_url.as_str()).collect();
+        let Some(mut whole) = StreamDto::from_release(&rels[0]) else {
+            return Err("No other source has this title.".into());
+        };
+        whole.url = edl_join(&urls);
+        whole.size = rels.iter().map(|r| r.size_bytes).sum();
+        // The downloader fetches one file; a joined timeline is not one.
+        whole.downloadable = false;
+        return Ok(vec![whole]);
+    }
+    sort_best_first(&mut rels);
+    let out: Vec<StreamDto> = rels.iter().filter_map(StreamDto::from_release).collect();
+    if out.is_empty() {
+        return Err("No other source has this title.".into());
+    }
+    Ok(out)
+}
+
+/// An mpv `edl://` address that plays several files back to back as one. Each entry is
+/// length-prefixed (`%N%`) so a `,` or `;` inside a URL cannot split it.
+fn edl_join(urls: &[&str]) -> String {
+    let parts: Vec<String> = urls.iter().map(|u| format!("%{}%{}", u.len(), u)).collect();
+    format!("edl://{}", parts.join(";"))
+}
+
+/// Dramachi appends the release year to film names ("Parasite 2019", "Inception 2010").
+/// A trailing year is dropped before comparing, but only when it agrees with the year
+/// being looked for, so "Blade Runner 2049" is still read as a name, not as a date.
+fn dramachi_title_matches(candidate: &str, want: &str, year: &str, is_series: bool) -> bool {
+    if norm_title(candidate) == want {
+        return true;
+    }
+    let Some((head, tail)) = candidate.trim().rsplit_once(' ') else {
+        return false;
+    };
+    let is_year = tail.len() == 4 && tail.chars().all(|c| c.is_ascii_digit());
+    if !is_year || norm_title(head) != want {
+        return false;
+    }
+    is_series || year.is_empty() || year_gap(tail, year).map(|g| g <= 1).unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -390,6 +474,26 @@ mod tests {
         assert_eq!(norm_title("Stree 2"), "stree2");
         assert_eq!(norm_title("Dune: Part Two"), "duneparttwo");
         assert_eq!(norm_title("3 Idiots"), "3idiots");
+    }
+
+    #[test]
+    fn dramachi_years_come_off_only_when_they_agree() {
+        assert!(dramachi_title_matches("Parasite 2019", "parasite", "2019", false));
+        assert!(dramachi_title_matches("Inception 2010", "inception", "", false));
+        assert!(dramachi_title_matches("Squid Game", "squidgame", "2021", true));
+        // A year that disagrees is a different film.
+        assert!(!dramachi_title_matches("Dune 1984", "dune", "2021", false));
+        // A number that belongs to the name stays part of it.
+        assert!(dramachi_title_matches("Blade Runner 2049", "bladerunner2049", "2017", false));
+        assert!(!dramachi_title_matches("Naruto The Movie 2 Bonds 2008", "naruto", "2002", true));
+    }
+
+    #[test]
+    fn film_parts_join_into_one_timeline() {
+        assert_eq!(
+            edl_join(&["https://a/x_001.mp4", "https://a/x;2.mp4"]),
+            "edl://%19%https://a/x_001.mp4;%17%https://a/x;2.mp4"
+        );
     }
 
     #[test]

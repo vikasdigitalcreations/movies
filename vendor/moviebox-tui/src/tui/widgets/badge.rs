@@ -12,7 +12,8 @@ pub fn resolution_label(resolution: i64) -> &'static str {
         2160 | 4320 => "4K",
         1080 => "1080p",
         720 => "720p",
-        480 | 540 | 576 => "480p",
+        540 => "540p",
+        480 | 576 => "480p",
         360 => "360p",
         _ if resolution > 0 => "HD",
         _ => "SD",
@@ -190,6 +191,7 @@ pub fn provider_origin_tag(provider: ProviderKind) -> &'static str {
         ProviderKind::BdixCircleFtp => "[CircleFTP]",
         ProviderKind::BdixDhakaFlix => "[DhakaFlix]",
         ProviderKind::Addons => "[Addon]",
+        ProviderKind::Dramachi => "[Dramachi]",
     }
 }
 
@@ -211,6 +213,7 @@ pub fn provider_badge_span<'a>(
             ProviderKind::BdixCircleFtp => theme.teal,
             ProviderKind::BdixDhakaFlix => theme.sapphire,
             ProviderKind::Addons => theme.accent,
+            ProviderKind::Dramachi => theme.rosewater,
         };
         Span::styled(tag, style)
     }
@@ -225,6 +228,8 @@ pub fn extract_resolution(title: &str, quality: Option<&str>) -> Option<i64> {
             return Some(1080);
         } else if q_lower.contains("720") || q_lower.contains("hd") {
             return Some(720);
+        } else if q_lower.contains("540") {
+            return Some(540);
         } else if q_lower.contains("480") || q_lower.contains("sd") {
             return Some(480);
         } else if q_lower.contains("576") {
@@ -513,6 +518,7 @@ mod tests {
             "[DhakaFlix]"
         );
         assert_eq!(provider_origin_tag(ProviderKind::Addons), "[Addon]");
+        assert_eq!(provider_origin_tag(ProviderKind::Dramachi), "[Dramachi]");
     }
 
     #[test]

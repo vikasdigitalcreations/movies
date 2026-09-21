@@ -65,9 +65,23 @@ impl App {
                 .iter()
                 .map(|k| format!("  {}  ", k.label()))
                 .collect::<Vec<_>>();
-            let confirm_label = "Select";
+            let confirm_label = if self.state.settings_player_picker {
+                "Select"
+            } else {
+                "Play"
+            };
+            let layout = if self.state.settings_player_picker {
+                crate::tui::overlay::settings_picker_layout(
+                    area,
+                    self.state.settings_category,
+                    &items,
+                    10,
+                )
+            } else {
+                crate::tui::overlay::picker_layout(area, &items, confirm_label, 10)
+            };
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &items, confirm_label, 10),
+                layout,
                 col,
                 row,
                 &self.state.player_picker_state,
@@ -91,8 +105,14 @@ impl App {
                 .iter()
                 .map(|p| format!("  [✓] {}  ", p.label()))
                 .collect::<Vec<_>>();
+            let layout = crate::tui::overlay::settings_picker_layout(
+                area,
+                self.state.settings_category,
+                &items,
+                20,
+            );
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &items, "Toggle", 20),
+                layout,
                 col,
                 row,
                 &self.state.sources_list_state,
@@ -134,8 +154,18 @@ impl App {
                     }
                 })
                 .collect();
+            let layout = if self.state.show_settings_popup {
+                crate::tui::overlay::settings_picker_layout(
+                    area,
+                    self.state.settings_category,
+                    &items,
+                    16,
+                )
+            } else {
+                crate::tui::overlay::picker_layout(area, &items, "Apply", 16)
+            };
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &items, "Apply", 16),
+                layout,
                 col,
                 row,
                 &self.state.theme_list_state,
@@ -233,8 +263,9 @@ impl App {
                     format!("  {badge_str}{label}  ")
                 })
                 .collect();
+            let layout = crate::tui::overlay::browse_picker_layout(area, &browse_items, 36);
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &browse_items, "Open", 36),
+                layout,
                 col,
                 row,
                 &self.state.browse_list_state,
@@ -469,21 +500,19 @@ impl App {
             let popup = crate::tui::overlay::addon_manager_layout(
                 area,
                 addons_count,
+                self.state.max_addon_name_width(),
                 self.state.addon_input_active,
             );
             if popup.contains(ratatui::layout::Position::new(col, row)) {
                 if !self.state.addon_input_active {
-                    let list_start_y = popup.y + 1;
-                    let button_y = list_start_y + addons_count as u16 + 1;
-                    if row > list_start_y && row < button_y {
-                        let clicked_addon_idx = (row - list_start_y - 1) as usize;
-                        if clicked_addon_idx < addons_count {
-                            self.state.addon_manager_selected = clicked_addon_idx + 1;
+                    let items_start_y = popup.y + 1;
+                    let total_items = addons_count + 1;
+                    if row >= items_start_y && row < items_start_y + total_items as u16 {
+                        let clicked_idx = (row - items_start_y) as usize;
+                        if clicked_idx < total_items {
+                            self.state.addon_manager_selected = clicked_idx;
                             self.addon_manager_activate();
                         }
-                    } else if row == button_y {
-                        self.state.addon_manager_selected = addons_count + 1;
-                        self.addon_manager_activate();
                     }
                 }
             } else {
@@ -833,16 +862,11 @@ impl App {
                     next_label,
                     ctrl_p,
                     self.state.is_tv_mode,
-                    self.state.active_provider == crate::providers::models::ProviderKind::Addons,
                 );
                 let pos = ratatui::layout::Position::new(col, row);
                 if btn1.contains(pos) {
                     if self.state.is_tv_mode {
                         self.action_sender.send(Action::TvReloadPlaylists).ok();
-                    } else if self.state.active_provider
-                        == crate::providers::models::ProviderKind::Addons
-                    {
-                        self.action_sender.send(Action::ShowAddonManager).ok();
                     } else {
                         self.cycle_provider();
                     }
@@ -1427,7 +1451,6 @@ mod tests {
             next_label,
             ctrl_p,
             app.state.is_tv_mode,
-            app.state.active_provider == crate::providers::models::ProviderKind::Addons,
         );
 
         app.handle_home_mouse(btn2.x + 1, btn2.y, area);

@@ -13,13 +13,38 @@ jobs:
     if: "!github.event.issue.pull_request"
     steps:
       - name: Check issue similarity
-        uses: actions-cool/issues-similarity@v1
+        uses: actions/github-script@v7
         with:
-          filter-threshold: 0.75
-          title-threshold: 0.85
-          comment: |
-            Potential duplicate detected: #{number}.
+          script: |
+            const currentIssue = context.payload.issue;
+            const currentTitle = currentIssue.title.toLowerCase().replace(/^(bug|feat|chore|docs|fix):\s*/, '').trim();
+            if (currentTitle.length < 5) return;
 
-            Please review that issue to check if your problem or suggestion has already been addressed.
-          labels: duplicate
-          close-issue: false
+            const words = currentTitle.split(/\s+/).filter(w => w.length > 3);
+            if (words.length === 0) return;
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo,
+              state: 'all',
+              per_page: 100,
+            });
+
+            for (const issue of issues) {
+              if (issue.number === currentIssue.number || issue.pull_request) continue;
+              const otherTitle = issue.title.toLowerCase().replace(/^(bug|feat|chore|docs|fix):\s*/, '').trim();
+              
+              let matches = 0;
+              for (const word of words) {
+                if (otherTitle.includes(word)) matches++;
+              }
+
+              const score = matches / words.length;
+              if (score >= 0.75) {
+                await github.rest.issues.createComment({
+                  ...context.repo,
+                  issue_number: currentIssue.number,
+                  body: `Potential duplicate detected: #${issue.number} (${issue.title}).\n\nCheck that issue to see if this has already been reported or resolved.`
+                });
+                break;
+              }
+            }

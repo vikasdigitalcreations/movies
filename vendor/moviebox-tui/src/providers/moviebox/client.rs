@@ -59,7 +59,7 @@ impl MovieBoxClient {
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .pool_max_idle_per_host(4)
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .expect("moviebox http client");
 
         let (user_agent, client_info) =
             crate::providers::moviebox::crypto::generate_client_info_and_ua();

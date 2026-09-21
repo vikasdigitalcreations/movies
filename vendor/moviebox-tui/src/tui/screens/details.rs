@@ -80,7 +80,7 @@ impl DetailsLayoutTier {
                 .clamp(1, synopsis_limit)
         };
         let content_rows = if show_poster {
-            (meta_lines + synopsis_rows).max(5)
+            6
         } else {
             meta_lines + synopsis_rows
         };
@@ -1276,6 +1276,9 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                             "DhakaFlix".to_string()
                         }
                         crate::providers::models::ProviderKind::Addons => "Addon".to_string(),
+                        crate::providers::models::ProviderKind::Dramachi => {
+                            "Dramachi CDN".to_string()
+                        }
                     }
                 };
 
@@ -1378,12 +1381,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         let msg = if waiting_for_language {
             "Choose an audio track to load streams.".to_string()
         } else if let Some(error) = &state.stream_error {
-            if state.active_provider == crate::providers::ProviderKind::Addons {
-                error.clone()
-            } else if error.contains("No stream sources") || error.contains("not listed") {
-                format!("{error}.")
+            if error.contains("No stream sources") || error.contains("No streams available") {
+                format!("No streams available on {provider_label}.")
+            } else if let Some(stripped) =
+                error.strip_prefix("Provider is temporarily unavailable: ")
+            {
+                stripped.trim_end_matches('.').to_string()
             } else {
-                error.clone()
+                error.trim_end_matches('.').to_string()
             }
         } else if is_loading_streams {
             let spinner = stream_loading_spinner(state.tick_count, state.basic_terminal);
@@ -1489,14 +1494,15 @@ pub(crate) fn season_confirm_summary(state: &AppState) -> Vec<String> {
         .as_ref()
         .map(|d| d.title.as_str())
         .unwrap_or("Series");
-    let season_idx = state.selected_season;
-    let eps_count = if season_idx > 0 && season_idx <= state.available_episode_numbers.len() {
-        state.available_episode_numbers[season_idx - 1].len()
-    } else {
-        0
-    };
+    let season_idx = state.season_list_state.selected().unwrap_or(0);
+    let eps_count = state
+        .available_episode_numbers
+        .get(season_idx)
+        .map(|eps| eps.len())
+        .unwrap_or(0);
+    let season_number = state.selected_season;
     let mut summary = vec![format!(
-        "{title} • Season {season_idx} ({eps_count} Episodes)"
+        "{title} • Season {season_number} ({eps_count} Episodes)"
     )];
     if let Some(stream) = selected_stream_summary(state) {
         summary.push(format!("Quality: {stream}"));
@@ -1582,6 +1588,8 @@ fn selected_stream_summary(state: &AppState) -> Option<String> {
 fn clean_language_name(value: &str) -> String {
     let mut name = if value.to_ascii_lowercase().starts_with("original") {
         "Original".to_string()
+    } else if value.eq_ignore_ascii_case("dub") {
+        "English Dub".to_string()
     } else {
         value
             .replace("dub", "")
@@ -2805,10 +2813,60 @@ mod tests {
             ],
         };
 
+        let area = Rect::new(0, 0, 70, 24);
+        let tier = DetailsLayoutTier::for_area(area);
+        let height_with_synopsis = tier.header_height(area, Some(&details));
+        assert_eq!(height_with_synopsis, 8);
+
+        let mut details_empty = details.clone();
+        details_empty.description = None;
+        let height_empty = tier.header_height(area, Some(&details_empty));
+        assert_eq!(height_empty, 5);
+    }
+
+    #[test]
+    fn test_details_header_height_stable_with_poster_across_audio_dub_synopsis_lengths() {
+        let details_original = MediaDetails {
+            id: ProviderMediaId {
+                provider: ProviderKind::MovieBox,
+                value: "100".to_string(),
+            },
+            title: "Obsession".to_string(),
+            media_type: MediaType::Movie,
+            year: Some("2026".to_string()),
+            description: Some("After breaking the mysterious \"One Wish Willow\" to win his crush's heart, a hopeless romantic finds himself getting exactly what he asked for but soon discovers that some desires come at a dark, si...".to_string()),
+            tagline: None,
+            imdb_rating: Some("7.8".to_string()),
+            director: None,
+            stars: None,
+            prints: None,
+            audios: None,
+            poster_url: Some("https://example.com/obsession.jpg".to_string()),
+            duration: Some("1h 49m".to_string()),
+            genres: vec![],
+            seasons: vec![],
+            dubs: vec![],
+        };
+        let mut details_hindi = details_original.clone();
+        details_hindi.description = Some(
+            "A hopeless romantic's wish for his crush's love triggers a dark enchantment."
+                .to_string(),
+        );
+        details_hindi.duration = Some("1h 40m".to_string());
+
+        let mut details_empty_synopsis = details_original.clone();
+        details_empty_synopsis.description = None;
+
         let area = Rect::new(0, 0, 120, 30);
         let tier = DetailsLayoutTier::for_area(area);
-        let height = tier.header_height(area, Some(&details));
-        assert_eq!(height, 7);
+
+        let height_original = tier.header_height(area, Some(&details_original));
+        let height_hindi = tier.header_height(area, Some(&details_hindi));
+        let height_empty = tier.header_height(area, Some(&details_empty_synopsis));
+
+        assert_eq!(height_original, 8);
+        assert_eq!(height_hindi, 8);
+        assert_eq!(height_empty, 8);
     }
 
     #[test]

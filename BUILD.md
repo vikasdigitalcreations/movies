@@ -1,6 +1,6 @@
 # MovieBox (desktop) – build notes
 
-A Windows app around the open-source MovieBox-Tui v0.1.20 (vendored in `vendor/moviebox-tui`).
+A Windows app around the open-source MovieBox-Tui v0.1.22 (vendored in `vendor/moviebox-tui`).
 
 ## Requirements (already installed on the build PC)
 - Rust stable (MSVC) – `rustup`

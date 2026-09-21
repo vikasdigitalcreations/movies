@@ -121,7 +121,10 @@ pub fn ensure_tracker_script() -> Option<PathBuf> {
     let dir = crate::config::scripts_dir()?;
     if !dir.exists() {
         if let Err(e) = fs::create_dir_all(&dir) {
-            log::warn!("failed to create scripts dir {}: {e}", dir.display());
+            log::warn!(
+                "failed to create scripts dir {}: {e}",
+                crate::logging::sanitize_path(&dir)
+            );
             return None;
         }
     }
@@ -132,7 +135,10 @@ pub fn ensure_tracker_script() -> Option<PathBuf> {
             .unwrap_or(true)
     {
         if let Err(e) = fs::write(&path, TRACKER_LUA_CONTENT.as_bytes()) {
-            log::warn!("failed to write tracker script {}: {e}", path.display());
+            log::warn!(
+                "failed to write tracker script {}: {e}",
+                crate::logging::sanitize_path(&path)
+            );
             return None;
         }
     }
@@ -148,7 +154,10 @@ pub fn state_file_path(
     let dir = crate::config::playback_state_dir()?;
     if !dir.exists() {
         if let Err(e) = fs::create_dir_all(&dir) {
-            log::warn!("failed to create playback state dir {}: {e}", dir.display());
+            log::warn!(
+                "failed to create playback state dir {}: {e}",
+                crate::logging::sanitize_path(&dir)
+            );
             return None;
         }
     }

@@ -1,78 +1,57 @@
 name: Bug report
-description: Report an issue or unexpected behavior in MovieBox-Tui.
+description: Something is broken or not working as expected.
 title: "bug: "
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Please verify the issue occurs on the latest release before submitting.
-        For general setup questions, use [GitHub Discussions](https://github.com/mesamirh/MovieBox-Tui/discussions).
-
   - type: checkboxes
-    id: checklist
+    id: preflight
     attributes:
-      label: Pre-submission Checklist
+      label: Pre-submission checklist
       options:
-        - label: I am running the latest release of MovieBox-Tui.
+        - label: I checked docs/known-issues.md and docs/players.md
           required: true
-        - label: I searched existing issues and confirmed this is not already reported.
+        - label: I am using the latest version of MovieBox-Tui
           required: true
+        - label: If on Android/Termux, I installed termux-tools and an Android media player (VLC, Just Player, MPV app)
+          required: false
 
   - type: textarea
     id: description
     attributes:
-      label: Description
-      description: Describe what happened and what you expected instead.
-      placeholder: Provide a clear description of the problem.
+      label: What happened?
+      description: >
+        Describe the bug clearly. What did you expect to happen instead?
+        One-line answers like "it shows error" will be closed automatically.
+      placeholder: |
+        Example: When I search for "Inception" and press Enter to watch,
+        the app shows "Player exited with code 1" and closes immediately.
+        I expected the video to start playing in mpv.
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to Reproduce
-      description: List the exact steps to reproduce the issue.
+      label: Steps to reproduce
       placeholder: |
-        1. Launch `moviebox-tui`
+        1. Run `moviebox-tui`
         2. Search for ...
         3. Select ...
-        4. See error ...
+        4. Press Enter / watch
     validations:
       required: true
 
   - type: textarea
-    id: error_output
+    id: log_output
     attributes:
-      label: Error Output or Screenshot
-      description: Paste any error status text displayed on screen, terminal output, or attach a screenshot.
-      placeholder: Paste error messages or drag and drop screenshots here.
-    validations:
-      required: false
-
-  - type: dropdown
-    id: os
-    attributes:
-      label: Operating System
-      options:
-        - Android (Termux)
-        - Linux
-        - macOS
-        - Windows
-    validations:
-      required: true
-
-  - type: dropdown
-    id: player
-    attributes:
-      label: Media Player
-      description: The media player configured in Settings (/settings) or launched.
-      options:
-        - Android Player (Intent Chooser)
-        - mpv
-        - IINA
-        - VLC
-        - None / Other
+      label: Log / Terminal Output
+      description: >
+        Provide the exact sanitized log file path content.
+        Android/Linux: `~/.local/share/moviebox-tui/logs/moviebox-tui_rCURRENT.log`
+        Windows: `%LOCALAPPDATA%\moviebox-tui\logs\moviebox-tui_rCURRENT.log`
+        macOS: `~/Library/Application Support/moviebox-tui/logs/moviebox-tui_rCURRENT.log`
+        Run with `MOVIEBOX_LOG=debug moviebox-tui` to get detailed output.
+      render: shell
     validations:
       required: true
 
@@ -80,15 +59,27 @@ body:
     id: version
     attributes:
       label: Version
-      description: Found via `moviebox-tui --version`.
+      description: Run `moviebox-tui --version` to find it.
       placeholder: "0.1.20"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Android (Termux)
     validations:
       required: true
 
   - type: input
     id: terminal
     attributes:
-      label: Terminal Emulator
-      placeholder: "Ghostty, Kitty, Alacritty, iTerm2, WezTerm, Termux, Windows Terminal, ..."
+      label: Terminal
+      placeholder: "Ghostty, iTerm2, Kitty, WezTerm, Alacritty, Termux, cmd, ..."
     validations:
-      required: false
+      required: true

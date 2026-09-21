@@ -14,12 +14,15 @@ pub enum ProviderKind {
     BdixDhakaFlix,
     #[serde(rename = "addons", alias = "addon")]
     Addons,
+    #[serde(rename = "dramachi")]
+    Dramachi,
 }
 
 impl ProviderKind {
-    pub const ENABLED: [Self; 4] = [
+    pub const ENABLED: [Self; 5] = [
         Self::MovieBox,
         Self::FourKHdHub,
+        Self::Dramachi,
         Self::BdixCircleFtp,
         Self::BdixDhakaFlix,
     ];
@@ -31,6 +34,7 @@ impl ProviderKind {
             Self::BdixCircleFtp => "bdix_circleftp",
             Self::BdixDhakaFlix => "bdix_dhakaflix",
             Self::Addons => "addons",
+            Self::Dramachi => "dramachi",
         }
     }
 
@@ -41,6 +45,7 @@ impl ProviderKind {
             Self::BdixCircleFtp => "CircleFTP (BDIX)",
             Self::BdixDhakaFlix => "DhakaFlix (BDIX)",
             Self::Addons => "Addons",
+            Self::Dramachi => "Dramachi",
         }
     }
 
@@ -51,6 +56,7 @@ impl ProviderKind {
             "bdix_circleftp" | "circleftp (bdix)" => Some(Self::BdixCircleFtp),
             "bdix_dhakaflix" | "dhakaflix (bdix)" => Some(Self::BdixDhakaFlix),
             "addons" | "addon" => Some(Self::Addons),
+            "dramachi" => Some(Self::Dramachi),
             _ => None,
         }
     }
@@ -269,6 +275,7 @@ impl Release {
                 ProviderKind::BdixCircleFtp => "CircleFTP",
                 ProviderKind::BdixDhakaFlix => "DhakaFlix",
                 ProviderKind::Addons => "Addon",
+                ProviderKind::Dramachi => "Dramachi",
                 ProviderKind::MovieBox => "Direct",
             })
     }

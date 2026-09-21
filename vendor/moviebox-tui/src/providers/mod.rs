@@ -1,5 +1,6 @@
 pub mod addons;
 pub mod bdix;
+pub mod dramachi;
 pub mod fourkhdhub;
 pub mod models;
 pub mod moviebox;

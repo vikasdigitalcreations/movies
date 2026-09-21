@@ -225,7 +225,12 @@ pub fn parse_releases(
         }
     }
     let mut releases = grouped.into_values().collect::<Vec<_>>();
-    releases.sort_by(|left, right| right.quality.cmp(&left.quality));
+    releases.sort_by(|left, right| {
+        right
+            .resolution_u64()
+            .cmp(&left.resolution_u64())
+            .then_with(|| right.size_bytes.cmp(&left.size_bytes))
+    });
     Ok(releases)
 }
 
@@ -390,14 +395,22 @@ fn parse_size_bytes(value: &str) -> Option<u64> {
 }
 
 fn detect_quality(value: &str) -> Option<String> {
-    ["2160p", "1080p", "720p", "480p"]
-        .into_iter()
-        .find(|quality| {
-            value
-                .to_ascii_lowercase()
-                .contains(&quality.to_ascii_lowercase())
-        })
-        .map(str::to_string)
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("2160p")
+        || lower.contains("2160")
+        || lower.contains("4k")
+        || lower.contains("uhd")
+    {
+        Some("2160p".to_string())
+    } else if lower.contains("1080p") || lower.contains("1080") || lower.contains("fhd") {
+        Some("1080p".to_string())
+    } else if lower.contains("720p") || lower.contains("720") || lower.contains("hd") {
+        Some("720p".to_string())
+    } else if lower.contains("480p") || lower.contains("480") || lower.contains("sd") {
+        Some("480p".to_string())
+    } else {
+        None
+    }
 }
 
 fn detect_codec(value: &str) -> Option<String> {
@@ -577,5 +590,28 @@ mod tests {
         assert_eq!(strip_trailing_year("(2024)"), "");
         assert_eq!(strip_trailing_year("12345"), "12345");
         assert_eq!(strip_trailing_year("123456"), "123456");
+    }
+    #[test]
+    fn test_detect_quality_tokens() {
+        use super::detect_quality;
+        assert_eq!(
+            detect_quality("Inception (2010) 4K UHD BluRay REMUX").as_deref(),
+            Some("2160p")
+        );
+        assert_eq!(
+            detect_quality("Movie.2160p.HDR.x265").as_deref(),
+            Some("2160p")
+        );
+        assert_eq!(
+            detect_quality("Show.S01E01.FHD.1080p.mkv").as_deref(),
+            Some("1080p")
+        );
+        assert_eq!(
+            detect_quality("Video.1080.WEB-DL").as_deref(),
+            Some("1080p")
+        );
+        assert_eq!(detect_quality("Film.720p.HD.x264").as_deref(), Some("720p"));
+        assert_eq!(detect_quality("Old.Show.480p.SD").as_deref(), Some("480p"));
+        assert_eq!(detect_quality("Unknown.Release.Title"), None);
     }
 }

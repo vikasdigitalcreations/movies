@@ -77,73 +77,59 @@ impl crate::providers::ReleaseProvider for client::MovieBoxClient {
                 20,
             )
         );
-        let upload_resource_id = resources_res.ok().and_then(|val| {
-            val.get("list")
-                .or_else(|| val.get("data").and_then(|d| d.get("list")))
-                .and_then(|l| l.as_array())
-                .and_then(|arr| {
-                    arr.iter().find(|item| {
-                        let parse_num = |k: &str| -> Option<usize> {
-                            item.get(k).and_then(|v| {
-                                v.as_u64()
-                                    .map(|n| n as usize)
-                                    .or_else(|| v.as_i64().map(|n| n as usize))
-                                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-                            })
-                        };
-                        let se = parse_num("se");
-                        let ep_num = parse_num("ep");
-                        (season == 0 && episode == 0)
-                            || (se == Some(season) && ep_num == Some(episode))
-                    })
-                })
-                .and_then(|item| {
-                    item.get("resourceId")
-                        .or_else(|| item.get("id"))
-                        .and_then(|v| {
-                            if let Some(n) = v.as_i64() {
-                                Some(n.to_string())
-                            } else if let Some(n) = v.as_u64() {
-                                Some(n.to_string())
-                            } else {
-                                v.as_str().map(|s| s.to_string())
-                            }
-                        })
-                })
-        });
 
-        let json = play_info_res.map_err(ProviderError::from)?;
-        let mut releases =
-            adapt::moviebox_play_info_json_to_releases(&json, season, episode, self.user_agent());
+        let mut releases = Vec::new();
+        let mut seen_urls = std::collections::HashSet::new();
 
-        if !releases.is_empty() {
-            if let Some(upload_id) = upload_resource_id {
-                for rel in &mut releases {
-                    rel.resource_id = Some(upload_id.clone());
+        if let Ok(json) = play_info_res {
+            for rel in adapt::moviebox_play_info_json_to_releases(
+                &json,
+                season,
+                episode,
+                self.user_agent(),
+            ) {
+                if let Some(url) = rel.direct_url() {
+                    let base = url.split('?').next().unwrap_or(url).to_string();
+                    if !base.is_empty() {
+                        seen_urls.insert(base);
+                    }
+                }
+                releases.push(rel);
+            }
+        }
+
+        if let Ok(res_json) = resources_res {
+            for rel in adapt::moviebox_resource_json_to_releases(&res_json) {
+                if let Some(url) = rel.direct_url() {
+                    let base = url.split('?').next().unwrap_or(url).to_string();
+                    if !base.is_empty() && seen_urls.contains(&base) {
+                        continue;
+                    }
+                    seen_urls.insert(base);
+                }
+                if (season == 0 && episode == 0)
+                    || (rel.season == Some(season) && rel.episode == Some(episode))
+                    || (rel.season.is_none() && rel.episode.is_none())
+                {
+                    releases.push(rel);
                 }
             }
-            return Ok(releases);
         }
 
-        let page = if episode > 0 {
-            (episode - 1) / 20 + 1
-        } else {
-            1
-        };
-        let (items, _) = self
-            .fetch_resource_page(id, season, episode, 0, page)
-            .await
-            .map_err(ProviderError::from)?;
-        let mut legacy_releases = Vec::new();
-        for item in items {
-            let rel = adapt::moviebox_resource_item_to_release(&item);
-            if (season == 0 && episode == 0)
-                || (rel.season == Some(season) && rel.episode == Some(episode))
-            {
-                legacy_releases.push(rel);
-            }
+        if releases.is_empty() {
+            return Err(ProviderError::Unavailable(
+                "No stream sources available".to_string(),
+            ));
         }
-        Ok(legacy_releases)
+
+        releases.sort_by(|left, right| {
+            right
+                .resolution_u64()
+                .cmp(&left.resolution_u64())
+                .then_with(|| right.size_bytes.cmp(&left.size_bytes))
+        });
+
+        Ok(releases)
     }
 }
 

@@ -299,6 +299,7 @@ pub struct AppState {
     pub basic_terminal: bool,
     pub moviebox_enabled: bool,
     pub fourkhdhub_enabled: bool,
+    pub dramachi_enabled: bool,
     pub bdix_circleftp_enabled: bool,
     pub bdix_dhakaflix_enabled: bool,
     pub bdix_probed: bool,
@@ -469,6 +470,7 @@ impl Default for AppState {
             overview_modal_content: String::new(),
             moviebox_enabled: true,
             fourkhdhub_enabled: true,
+            dramachi_enabled: true,
             bdix_circleftp_enabled: false,
             bdix_dhakaflix_enabled: false,
             bdix_probed: false,
@@ -594,6 +596,7 @@ impl AppState {
         match p {
             ProviderKind::MovieBox => self.moviebox_enabled,
             ProviderKind::FourKHdHub => self.fourkhdhub_enabled,
+            ProviderKind::Dramachi => self.dramachi_enabled,
             ProviderKind::BdixCircleFtp => self.bdix_circleftp_enabled,
             ProviderKind::BdixDhakaFlix => self.bdix_dhakaflix_enabled,
             ProviderKind::Addons => self.addons_enabled,
@@ -604,6 +607,7 @@ impl AppState {
         match p {
             ProviderKind::MovieBox => self.moviebox_enabled = enabled,
             ProviderKind::FourKHdHub => self.fourkhdhub_enabled = enabled,
+            ProviderKind::Dramachi => self.dramachi_enabled = enabled,
             ProviderKind::BdixCircleFtp => self.bdix_circleftp_enabled = enabled,
             ProviderKind::BdixDhakaFlix => self.bdix_dhakaflix_enabled = enabled,
             ProviderKind::Addons => self.addons_enabled = enabled,
@@ -1151,7 +1155,6 @@ pub enum TvManagerRow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddonManagerRow {
-    Header(&'static str),
     Addon(usize),
     AddUrl,
 }
@@ -1264,7 +1267,7 @@ impl AppState {
     }
 
     pub fn addon_manager_rows(&self) -> Vec<AddonManagerRow> {
-        let mut rows = vec![AddonManagerRow::Header("Installed Addons")];
+        let mut rows = Vec::with_capacity(self.installed_addons.len() + 1);
         for index in 0..self.installed_addons.len() {
             rows.push(AddonManagerRow::Addon(index));
         }
@@ -1273,31 +1276,34 @@ impl AppState {
     }
 
     pub fn step_addon_manager_selected(&mut self, step: isize) {
-        let rows = self.addon_manager_rows();
-        self.addon_manager_selected =
-            step_header_aware_list(self.addon_manager_selected, rows.len(), step, |idx| {
-                matches!(rows.get(idx), Some(AddonManagerRow::Header(_)))
-            });
+        let total = self.addon_manager_rows().len();
+        if total == 0 {
+            self.addon_manager_selected = 0;
+            return;
+        }
+        if step > 0 {
+            self.addon_manager_selected = (self.addon_manager_selected + step as usize) % total;
+        } else {
+            let s = (-step) as usize % total;
+            self.addon_manager_selected = (self.addon_manager_selected + total - s) % total;
+        }
     }
 
     pub fn first_addon_manager_selected(&mut self) {
-        let rows = self.addon_manager_rows();
-        if let Some(idx) = rows
-            .iter()
-            .position(|r| !matches!(r, AddonManagerRow::Header(_)))
-        {
-            self.addon_manager_selected = idx;
-        }
+        self.addon_manager_selected = 0;
     }
 
     pub fn last_addon_manager_selected(&mut self) {
-        let rows = self.addon_manager_rows();
-        if let Some(idx) = rows
+        let total = self.addon_manager_rows().len();
+        self.addon_manager_selected = total.saturating_sub(1);
+    }
+
+    pub fn max_addon_name_width(&self) -> usize {
+        self.installed_addons
             .iter()
-            .rposition(|r| !matches!(r, AddonManagerRow::Header(_)))
-        {
-            self.addon_manager_selected = idx;
-        }
+            .map(|a| crate::tui::text::width(&a.name))
+            .max()
+            .unwrap_or(0)
     }
     pub fn open_overview_modal(&mut self, title: String, content: String) {
         self.overview_modal_title = title;

@@ -269,7 +269,6 @@ async fn test_mouse_click_favorites_item_focuses_and_selects() {
     );
     let card_w = moviebox_tui::tui::screens::home::search_deck_width(area, app.state(), true);
     let card_x = area.x + area.width.saturating_sub(card_w) / 2;
-    // Header is fav_y + 0, item 0 is fav_y + 1
     let item_0_y = landing_rows.rects[landing_rows.favorites].y + 1;
 
     app.handle_action(Action::MouseClick(card_x + 5, item_0_y))
@@ -543,7 +542,6 @@ async fn test_search_cursor_navigation_and_mid_string_editing() {
     app.state_mut().input_mode = InputMode::Editing;
     app.state_mut().search_query.set_content("avtar");
 
-    // Move left twice to position cursor between 'v' and 't' (pos 2)
     let left = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
     app.handle_action(Action::Key(left)).await;
     app.handle_action(Action::Key(left)).await;
@@ -551,24 +549,20 @@ async fn test_search_cursor_navigation_and_mid_string_editing() {
     app.handle_action(Action::Key(left)).await;
     assert_eq!(app.state().search_query.cursor(), 2);
 
-    // Insert 'a' -> "avatar"
     let char_a = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty());
     app.handle_action(Action::Key(char_a)).await;
     assert_eq!(app.state().search_query, "avatar");
     assert_eq!(app.state().search_query.cursor(), 3);
 
-    // Home -> cursor at 0
     let home = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
     app.handle_action(Action::Key(home)).await;
     assert_eq!(app.state().search_query.cursor(), 0);
 
-    // Forward delete 'a' -> "vatar"
     let delete = KeyEvent::new(KeyCode::Delete, KeyModifiers::empty());
     app.handle_action(Action::Key(delete)).await;
     assert_eq!(app.state().search_query, "vatar");
     assert_eq!(app.state().search_query.cursor(), 0);
 
-    // End -> cursor at end
     let end = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
     app.handle_action(Action::Key(end)).await;
     assert_eq!(app.state().search_query.cursor(), 5);
@@ -707,7 +701,6 @@ async fn test_ctrl_u_and_clear_command_clears_results_cleanly() {
     assert!(app.state().search_query.is_empty());
     assert_eq!(app.state().input_mode, InputMode::Normal);
 
-    // Test /clear slash command
     app.state_mut().search_results.push(SearchResult {
         id: "2".to_string(),
         title: "Inception".to_string(),
@@ -833,7 +826,6 @@ async fn test_no_results_and_error_state_rendering_hints() {
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new();
 
-    // No results view
     app.state_mut().active_screen = Screen::Home;
     app.state_mut().input_mode = InputMode::Normal;
     app.state_mut().has_search_settled = true;
@@ -850,7 +842,6 @@ async fn test_no_results_and_error_state_rendering_hints() {
     assert!(text.contains("No results for “nonexistent_movie_xyz” on MovieBox"));
     assert!(text.contains("Try on 4KHDHub"));
     assert!(text.contains("Clear Search"));
-    // Error view
     app.state_mut().search_error =
         Some("Failed to connect to MovieBox provider: connection refused by server".to_string());
     terminal.draw(|frame| app.draw(frame)).unwrap();

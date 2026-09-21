@@ -122,7 +122,8 @@ Type these commands directly into the search bar:
 
 | Command | Applicable Mode | Action |
 | :--- | :--- | :--- |
-| `/settings` | All | Open interactive Settings & Preferences Hub (aliases `/config` [opens Addon Manager in Addons provider or TV playlist manager in TV mode], `/pref`, `/preferences`, `/options`) |
+| `/settings` | All | Open interactive Settings & Preferences Hub |
+| `/config` | Contextual | Open playlist manager in TV mode, or Addon Manager in Addons provider (prompts `/settings` on MovieBox/4KHDHub) |
 | `/browse` | Streaming | Browse curated views (Trending, Popular) or Addon catalogs (Top Movies, Top Series) |
 | `/history` | Streaming | View watch history with latest progress |
 | `/favorites` | Streaming | View all starred titles |
@@ -145,8 +146,8 @@ When a new release is detected, a centered modal card displays the version compa
 - `b` / `B`: Copy Homebrew upgrade command (`brew upgrade moviebox-tui`) to clipboard with status toast on Homebrew-managed installations.
 - `o` / `O`: Open GitHub release notes in the system browser.
 - `Esc`: Dismiss modal and return to previous screen.
-- The notification modal formats release notes into clean, indented category sections (`[Added]`, `[Fixed]`) with bold feature titles and bullet items, stripping decorative prefixes and duplicate paragraph text.
-- During self-update (`u`), a focused progress modal displays an active spinner with a unified action status (`⠋ Downloading MovieBox-Tui v...` / `⠋ Installing MovieBox-Tui v...`) and a cross-platform warning notice (`⚠ Please wait • do not close terminal` on modern terminals, `[!] Please wait - do not close terminal` on basic terminals) with generous border clearances.
+- The notification modal formats release notes into clean, indented category sections (`[Added]`, `[Fixed]`) with bold feature titles and bullet items, docked with inline quick actions (`[u] Update ──── [o] GitHub`).
+- During self-update (`u`), a focused progress card displays an active spinner with the active stage (`Downloading release`, `Verifying checksum`, `Installing binary`) anchored cleanly at the search bar position.
 - Modal presentation is deferred while actively typing in the search bar (`InputMode::Editing`) to prevent input hijacking. During update installation, keyboard and mouse inputs are locked while the progress modal is displayed.
 ## Wide-Terminal Grid
 

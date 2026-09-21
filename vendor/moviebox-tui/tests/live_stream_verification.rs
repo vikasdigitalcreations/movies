@@ -7,7 +7,6 @@ async fn test_live_movie_stream_real_urls() {
     let client = MovieBoxClient::new();
     client.init().await.expect("client init successful");
 
-    // Ek Deewane Ki Deewaniyat subject_id: 4179386086617137184
     let releases = client
         .episode_streams("4179386086617137184", 0, 0)
         .await
@@ -46,7 +45,6 @@ async fn test_live_series_resolutions_and_streams() {
     let client = MovieBoxClient::new();
     client.init().await.expect("client init successful");
 
-    // Search for a series dynamically
     let search_res = client
         .search("Breaking Bad", 1)
         .await
@@ -176,7 +174,6 @@ async fn test_inspect_live_mpd_manifest() {
         xml
     );
 
-    // Test quality switching with mpv
     for (target_label, height_constraint, expected_res) in [
         (
             "1080p",
@@ -397,7 +394,6 @@ async fn test_live_moviebox_session_persistence_and_reuse() {
     let token1 = client1.ensure_session().await.expect("ensure session 1");
     assert!(!token1.is_empty(), "token1 should not be empty");
 
-    // Client 2 without explicit init should load persisted session
     let client2 = MovieBoxClient::new();
     let token2 = client2.ensure_session().await.expect("ensure session 2");
     assert_eq!(
@@ -405,14 +401,12 @@ async fn test_live_moviebox_session_persistence_and_reuse() {
         "client2 must reuse the persisted valid session token"
     );
 
-    // Perform search with client 2
     let search_res = client2
         .search("Inception", 1)
         .await
         .expect("search with client2");
     assert!(!search_res.is_null());
 
-    // Invalidation test
     client2.invalidate_session();
     let token3 = client2
         .ensure_session()

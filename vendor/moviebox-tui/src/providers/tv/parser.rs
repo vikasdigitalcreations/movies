@@ -36,7 +36,7 @@ impl M3UParser {
             let file_path = self.cache_dir.join(cache_filename(trimmed));
             let mut needs_download = true;
 
-            if file_path.exists() {
+            if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
                 if let Ok(metadata) = tokio::fs::metadata(&file_path).await {
                     if let Ok(modified) = metadata.modified() {
                         if let Ok(duration) = SystemTime::now().duration_since(modified) {

@@ -20,11 +20,12 @@ pub async fn aggregate_streams(
         return (Vec::new(), Vec::new());
     }
 
+    let clean_id = subject_id.split(':').next_back().unwrap_or(subject_id);
     let media_type = if is_series { "series" } else { "movie" };
-    let stream_id = if is_series && season > 0 && episode > 0 {
-        format!("{subject_id}:{season}:{episode}")
+    let stream_id = if is_series && episode > 0 {
+        format!("{clean_id}:{season}:{episode}")
     } else {
-        subject_id.to_string()
+        clean_id.to_string()
     };
 
     let mut tasks = Vec::new();
@@ -55,7 +56,10 @@ pub async fn aggregate_streams(
                         (releases, None)
                     }
                 }
-                Err(_) => (Vec::new(), None),
+                Err(err) => {
+                    log::warn!("addon {addon_name} failed to fetch streams: {err}");
+                    (Vec::new(), None)
+                }
             }
         });
     }

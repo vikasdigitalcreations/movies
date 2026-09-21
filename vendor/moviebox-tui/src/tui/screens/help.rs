@@ -84,8 +84,10 @@ pub fn build_help_columns(
     right.push(help_section_header("Commands & Shortcuts", theme));
     right.push(help_row("/settings", "Preferences & maintenance", theme));
     if state.is_tv_mode {
+        right.push(help_row("/config", "Manage TV playlist sources", theme));
         right.push(help_row("/list", "Browse all TV channels", theme));
     } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
+        right.push(help_row("/config", "Manage Stremio addon manifests", theme));
         right.push(help_row("/browse", "Browse addon catalogs", theme));
     } else {
         right.push(help_row("/browse", "Browse curated genres", theme));
@@ -209,6 +211,35 @@ mod tests {
         assert!(right_text.contains("Commands & Shortcuts"));
         assert!(right_text.contains("/settings"));
         assert!(right_text.contains("/exit"));
+    }
+    #[test]
+    fn test_build_help_columns_contextual_config() {
+        let tv_state = AppState {
+            is_tv_mode: true,
+            ..Default::default()
+        };
+        let theme = Theme::mocha();
+        let (_, tv_right) = build_help_columns(&tv_state, &theme);
+        let tv_text = tv_right
+            .iter()
+            .map(Line::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(tv_text.contains("/config"));
+        assert!(tv_text.contains("Manage TV playlist sources"));
+
+        let addons_state = AppState {
+            active_provider: crate::providers::models::ProviderKind::Addons,
+            ..Default::default()
+        };
+        let (_, addons_right) = build_help_columns(&addons_state, &theme);
+        let addons_text = addons_right
+            .iter()
+            .map(Line::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(addons_text.contains("/config"));
+        assert!(addons_text.contains("Manage Stremio addon manifests"));
     }
 
     #[test]

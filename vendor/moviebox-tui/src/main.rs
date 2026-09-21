@@ -26,7 +26,9 @@ fn purge_stale_subtitles() {
             moviebox_tui::service::resolve_subtitle_dir(),
             std::env::temp_dir().join("moviebox-tui/subs"),
         ];
-        if let Some(home) = dirs::home_dir() {
+        if moviebox_tui::updater::artifact::is_termux_environment()
+            && let Some(home) = dirs::home_dir()
+        {
             let android_storage = home.join("storage/downloads/moviebox_subs");
             if home.join("storage/downloads").exists() {
                 dirs.push(android_storage);
@@ -114,9 +116,11 @@ async fn main() -> std::io::Result<()> {
     moviebox_tui::logging::init();
 
     std::panic::set_hook(Box::new(|info| {
-        log::error!("panic: {info}");
+        let backtrace = std::backtrace::Backtrace::capture();
+        log::error!("panic: {info}\nbacktrace:\n{backtrace}");
+        moviebox_tui::logging::flush();
         restore_terminal();
-        eprintln!("{info}");
+        eprintln!("{info}\n{backtrace}");
     }));
 
     let stdout = std::io::stdout();
@@ -131,13 +135,15 @@ async fn main() -> std::io::Result<()> {
         crossterm::event::EnableMouseCapture,
         crossterm::event::EnableFocusChange
     )?;
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::event::PushKeyboardEnhancementFlags(
-            crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                | crossterm::event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-        )
-    );
+    if !moviebox_tui::updater::artifact::is_termux_environment() {
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::PushKeyboardEnhancementFlags(
+                crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | crossterm::event::KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+            )
+        );
+    }
 
     moviebox_tui::cache::clean_old_cache_background();
     purge_stale_subtitles();

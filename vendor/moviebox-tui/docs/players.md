@@ -18,8 +18,8 @@ Resolution caches detected paths across runs while allowing newly installed play
 
 | Player          | Invocation                                                                                                                                | Notes                                                                                                  |
 | :--- | :--- | :--- |
-| mpv             | `mpv --autofit=WxH --geometry=50%:50% --idle=no --keep-open=no [--start=..] [--script=..] [--script-opts=..] [--http-header-fields=..] [--sub-file=..] <url>` | Window sized to the terminal. Injects `moviebox_tracker.lua` for position tracking and resume. Each non-UA, non-Referer header is passed as a separate `--http-header-fields` argument. Flatpak mpv is launched via `flatpak run`. |
-| VLC             | `vlc --width=W --height=H --play-and-exit [--start-time=..] [--http-referrer=..] [--http-user-agent=..] [--sub-file=..] <url>` | Supports start time resume via `--start-time`. For CloudFront cookie-gated streams (MovieBox DASH), the URL is replaced by a loopback sidecar proxy address (`http://127.0.0.1:<port>/https/<host>/path`) that injects all auth headers server-side before forwarding chunks to VLC. |
+| mpv             | `mpv --autofit=WxH --geometry=50%:50% --idle=no --keep-open=no --ytdl-format=bestvideo+bestaudio/best --hls-bitrate=max [--start=..] [--script=..] [--script-opts=..] [--http-header-fields=..] [--sub-file=..] <url>` | Window sized to the terminal. Injects `moviebox_tracker.lua` for position tracking and resume. Sets maximum adaptive stream bitrate and best video/audio format selection. Each non-UA, non-Referer header is passed as a separate `--http-header-fields` argument. Flatpak mpv is launched via `flatpak run` with `@@` file forwarding markers for local files. |
+| VLC             | `vlc --width=W --height=H --play-and-exit --adaptive-logic=highest [--start-time=..] [--http-referrer=..] [--http-user-agent=..] [--sub-file=..] <url>` | Sets adaptive logic to highest representation. Supports start time resume via `--start-time`. For CloudFront cookie-gated streams (MovieBox DASH), the URL is replaced by a loopback sidecar proxy address (`http://127.0.0.1:<port>/https/<host>/path`) that injects all auth headers server-side before forwarding chunks to VLC. Flatpak VLC wraps local files with `@@` markers. |
 | IINA            | `iina-cli --keep-running --no-stdin --mpv-autofit=.. [--mpv-start=..] [--mpv-http-header-fields=..] [--mpv-sub-files=..] <url>`               | Uses the installed IINA `iina-cli`; falls back to `open -a IINA <url>` with an informational status warning if the CLI is absent. |
 | Android / Termux | `termux-open --chooser --content-type video/* <url>` (or `termux-open-url` / `termux-am`) | Opens an app chooser on the device, delegating playback to external apps (VLC, MX Player, Just Player, MPV Android). Requires `pkg install -y termux-tools termux-am`. Forwards `User-Agent`, `Referer`, and subtitles when using `termux-am`. |
 
@@ -40,8 +40,11 @@ The `supports_headers` gate in `app/playback.rs` validates whether a player can 
 - VLC and IINA download the subtitle to a temp file first, preserving the URL's
   extension (srt/vtt/ass/…), and pass the local path. The download applies the source
   headers. On failure a status is shown and playback continues without subtitles.
-- Android intent playback passes subtitle paths to `am`/`termux-am` via `subtitles_location` and `subs` intent extras.
-- Temp files are cleaned up after the player exits and purged at startup if stale.
+- Android intent playback downloads subtitles to shared storage (`~/storage/downloads/moviebox_subs` or `/sdcard/Download/moviebox_subs`) named clearly after the media title (e.g. `<Title> - S<N:02>E<E:02>.<ext>` or `<Title>.<ext>`), and passes local file paths to `am`/`termux-am` via `subtitles_location` and `subs` intent extras.
+  - Players supporting automatic subtitle intent binding (e.g. MX Player) load the file automatically.
+  - For players that do not auto-load external file paths from remote stream intents (e.g. VLC for Android, mpv-android), the file is immediately available in the player's subtitle file picker under `Download/moviebox_subs/`.
+  - Subtitles are retained during playback without premature deletion on intent command exit, and purged on a 24-hour retention cycle or via `/settings` → Clear Disk Cache.
+- Desktop temp files are cleaned up after the player process exits and purged at startup if stale.
 
 ## Playback Tracking & Resume
 

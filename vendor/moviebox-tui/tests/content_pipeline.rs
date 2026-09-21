@@ -334,7 +334,6 @@ async fn test_search_preview_and_details_metadata_isolation() {
         provider: ProviderKind::Addons,
     };
 
-    // Mismatched preview should NOT leak description/director/stars/rating into fallback
     let fallback = MediaDetails::from_search_result(&new_search_result, Some(&old_preview));
     assert_eq!(fallback.id.value, "tt_new_movie");
     assert_eq!(fallback.title, "New Movie Title");
@@ -344,7 +343,6 @@ async fn test_search_preview_and_details_metadata_isolation() {
     assert!(fallback.stars.is_none());
     assert!(fallback.imdb_rating.is_none());
 
-    // Matching preview SHOULD preserve preview details
     let matching_preview = MediaDetails {
         id: ProviderMediaId {
             provider: ProviderKind::Addons,

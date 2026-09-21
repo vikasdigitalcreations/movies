@@ -223,9 +223,7 @@ fn render_search_state(
                 format!("No items found for {}", catalog.label)
             } else if state.search_query.trim().eq_ignore_ascii_case("/history") {
                 "No watch history found".to_string()
-            } else if state.search_query.trim().eq_ignore_ascii_case("/favorites")
-                || state.search_query.trim().eq_ignore_ascii_case("/fav")
-            {
+            } else if state.search_query.trim().eq_ignore_ascii_case("/favorites") {
                 "No favorites saved yet".to_string()
             } else if !state.search_query.trim().is_empty() {
                 format!("No results for “{query}” on {provider_label}")
@@ -241,8 +239,7 @@ fn render_search_state(
             let is_compact_btn = area.width < 56;
             let sep = if is_compact_btn { "  " } else { "        " };
             let is_history_or_fav = state.search_query.trim().eq_ignore_ascii_case("/history")
-                || state.search_query.trim().eq_ignore_ascii_case("/favorites")
-                || state.search_query.trim().eq_ignore_ascii_case("/fav");
+                || state.search_query.trim().eq_ignore_ascii_case("/favorites");
             let pills = if is_history_or_fav {
                 vec![]
             } else if state.is_tv_mode {
@@ -254,21 +251,6 @@ fn render_search_state(
                 vec![
                     Span::styled(btn1_label, theme.subtext1),
                     Span::styled("r", theme.shortcut),
-                    Span::styled(") ]", theme.subtext1),
-                    Span::raw(sep),
-                    Span::styled(btn2_label, theme.subtext1),
-                    Span::styled("c", theme.shortcut),
-                    Span::styled(") ]", theme.subtext1),
-                ]
-            } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
-                let (btn1_label, btn2_label) = if is_compact_btn {
-                    ("[ Addons (", "[ Clear (")
-                } else {
-                    ("[ Addon Manager (", "[ Clear Search (")
-                };
-                vec![
-                    Span::styled(btn1_label, theme.subtext1),
-                    Span::styled(ctrl_p, theme.shortcut),
                     Span::styled(") ]", theme.subtext1),
                     Span::raw(sep),
                     Span::styled(btn2_label, theme.subtext1),
@@ -397,14 +379,11 @@ pub(crate) fn no_results_button_hitboxes(
     next_provider_label: &str,
     ctrl_p: &str,
     is_tv_mode: bool,
-    is_addon_mode: bool,
 ) -> (Rect, Rect) {
     let is_compact_btn = area.width < 56;
     let (btn1_w, btn2_w, sep_w) = if is_compact_btn {
         let b1 = if is_tv_mode {
             14
-        } else if is_addon_mode {
-            12 + ctrl_p.len() as u16
         } else {
             18 + ctrl_p.len() as u16
         };
@@ -412,8 +391,6 @@ pub(crate) fn no_results_button_hitboxes(
     } else {
         let b1 = if is_tv_mode {
             24
-        } else if is_addon_mode {
-            19 + ctrl_p.len() as u16
         } else {
             (14 + next_provider_label.len() + ctrl_p.len()) as u16
         };
@@ -1345,31 +1322,29 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             ])
             .split(vertical_chunks[rows.version]);
 
-        let modal_active = state.has_active_modal() || state.show_settings_popup;
         let update_active = (state.update_available.is_some()
             && state.input_mode != InputMode::Editing)
             || state.is_updating;
-        if !update_active {
-            let logo_style = if modal_active {
-                theme.overlay0
-            } else {
-                theme.title
-            };
-            let title_art = Paragraph::new(logo_text)
-                .alignment(Alignment::Left)
-                .style(logo_style);
-            frame.render_widget(title_art, horizontal_chunks[1]);
+        let modal_active = state.has_active_modal() || state.show_settings_popup || update_active;
+        let logo_style = if modal_active {
+            theme.overlay0
+        } else {
+            theme.title
+        };
+        let title_art = Paragraph::new(logo_text)
+            .alignment(Alignment::Left)
+            .style(logo_style);
+        frame.render_widget(title_art, horizontal_chunks[1]);
 
-            let version_style = if modal_active {
-                theme.muted
-            } else {
-                theme.text_dim
-            };
-            let version = Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-                .alignment(Alignment::Right)
-                .style(version_style);
-            frame.render_widget(version, version_chunks[1]);
-        }
+        let version_style = if modal_active {
+            theme.muted
+        } else {
+            theme.text_dim
+        };
+        let version = Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+            .alignment(Alignment::Right)
+            .style(version_style);
+        frame.render_widget(version, version_chunks[1]);
 
         let card_width = search_deck_width(area, state, true);
         let card_x = area.x + area.width.saturating_sub(card_width) / 2;
@@ -1381,6 +1356,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         };
 
         if !state.tv_config_popup
+            && !state.addon_manager_popup
             && !update_active
             && !state.show_settings_popup
             && !state.show_help
@@ -1393,12 +1369,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
 
         if state.landing_deck_visible()
             && !state.tv_config_popup
+            && !state.addon_manager_popup
             && !update_active
             && !state.show_settings_popup
         {
             render_landing_deck(frame, vertical_chunks[rows.favorites], state, theme);
         } else if !state.is_tv_mode
             && !state.tv_config_popup
+            && !state.addon_manager_popup
             && !suggestions_open
             && !update_active
             && !state.show_settings_popup
@@ -1902,10 +1880,16 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         }
     }
 
-    if !state.tv_config_popup && !state.show_settings_popup && !state.show_help {
+    if !state.tv_config_popup
+        && !state.addon_manager_popup
+        && !state.show_settings_popup
+        && !state.show_help
+    {
         render_search_suggestions(frame, area, search_bar_area, state, theme, view);
     }
-    render_provider_popup(frame, area, search_bar_area, state, theme);
+    if !state.addon_manager_popup {
+        render_provider_popup(frame, area, search_bar_area, state, theme);
+    }
     if state.tv_config_popup {
         let rows = state.tv_manager_rows();
         let total_rows = rows.len();
@@ -2014,16 +1998,18 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
     }
 
     if state.addon_manager_popup {
-        let addons_count = state.installed_addons.len();
-        let total_rows = state.addon_manager_rows().len();
-        let popup_area =
-            crate::tui::overlay::addon_manager_layout(area, addons_count, state.addon_input_active);
-        let title = format!(
-            "Addons Manager · {}/{}",
-            state.addon_manager_selected.saturating_add(1),
-            total_rows.max(1)
+        let popup_area = crate::tui::overlay::addon_manager_layout(
+            area,
+            state.installed_addons.len(),
+            state.max_addon_name_width(),
+            state.addon_input_active,
         );
-        let inner_area = crate::tui::widgets::ModalFrame::new(&title, theme, state.basic_terminal)
+        let title = if state.addon_input_active {
+            "Add Addon Manifest"
+        } else {
+            "Addons"
+        };
+        let inner_area = crate::tui::widgets::ModalFrame::new(title, theme, state.basic_terminal)
             .render(frame, popup_area, area);
 
         if state.addon_input_active {
@@ -2036,96 +2022,72 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                 state.basic_terminal,
             );
         } else {
-            let sections = ratatui::layout::Layout::vertical([
-                ratatui::layout::Constraint::Min(1),
-                ratatui::layout::Constraint::Length(1),
-                ratatui::layout::Constraint::Length(2),
-            ])
-            .split(inner_area);
-
-            let is_add_selected = state.addon_manager_selected == state.installed_addons.len() + 1;
-
-            let mut items = vec![ratatui::widgets::ListItem::new(ratatui::text::Line::from(
-                vec![
-                    ratatui::text::Span::raw("   "),
-                    ratatui::text::Span::styled("Installed Addons", theme.muted),
-                ],
-            ))];
+            let mut items = Vec::with_capacity(state.installed_addons.len() + 1);
 
             for (idx, a) in state.installed_addons.iter().enumerate() {
-                let row_idx = idx + 1;
-                let is_selected = state.addon_manager_selected == row_idx;
-                let prefix = ratatui::text::Span::raw("  ");
-                let check = if a.enabled {
-                    ratatui::text::Span::styled("[x] ", theme.success)
-                } else {
-                    ratatui::text::Span::styled("[ ] ", theme.text_dim)
-                };
-                let mut badges = Vec::new();
-                let mut badges_w = 0;
-                if a.is_core() {
-                    let label = "[Core] ";
-                    badges_w += crate::tui::text::width(label);
-                    badges.push(ratatui::text::Span::styled(label, theme.lavender));
-                }
-                if a.provides_meta {
-                    let label = "[Meta] ";
-                    badges_w += crate::tui::text::width(label);
-                    badges.push(ratatui::text::Span::styled(label, theme.sapphire));
-                }
-                if a.provides_stream {
-                    let label = "[Streams] ";
-                    badges_w += crate::tui::text::width(label);
-                    badges.push(ratatui::text::Span::styled(label, theme.rating));
-                }
-                if a.provides_catalog {
-                    let label = "[Catalog]";
-                    badges_w += crate::tui::text::width(label);
-                    badges.push(ratatui::text::Span::styled(label, theme.teal));
-                }
-                let prefix_w = 2;
-                let check_w = 4;
-                let name_budget = (inner_area.width as usize)
-                    .saturating_sub(prefix_w + check_w + badges_w + 2)
-                    .max(8);
-                let addon_label = format!("{} v{} ", a.name, a.version.as_deref().unwrap_or("1.0"));
-                let name = ratatui::text::Span::styled(
-                    crate::tui::text::truncate_width(&addon_label, name_budget).into_owned(),
-                    if is_selected {
-                        theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+                let is_selected = state.addon_manager_selected == idx;
+                let (prefix, prefix_style) = if a.enabled {
+                    if state.basic_terminal {
+                        (
+                            "* ",
+                            theme.success.add_modifier(ratatui::style::Modifier::BOLD),
+                        )
                     } else {
-                        theme.text
-                    },
-                );
-                let mut spans = vec![ratatui::text::Span::raw(" "), prefix, check, name];
-                spans.extend(badges);
-                let item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(spans));
-                let item = if is_selected {
-                    item.style(crate::tui::overlay::selection_style(
-                        theme,
-                        state.basic_terminal,
-                    ))
+                        (
+                            "✓ ",
+                            theme.success.add_modifier(ratatui::style::Modifier::BOLD),
+                        )
+                    }
                 } else {
-                    item
+                    ("  ", theme.text_dim)
                 };
+                let name_style = if is_selected {
+                    theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+                } else if a.enabled {
+                    theme.text
+                } else {
+                    theme.text_dim
+                };
+                let name_budget = (inner_area.width as usize).saturating_sub(6).max(8);
+                let truncated_name = crate::tui::text::truncate_width(&a.name, name_budget);
+                let item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
+                    ratatui::text::Span::raw("  "),
+                    ratatui::text::Span::styled(prefix, prefix_style),
+                    ratatui::text::Span::styled(truncated_name.into_owned(), name_style),
+                    ratatui::text::Span::raw("  "),
+                ]));
                 items.push(item);
             }
 
-            let list = ratatui::widgets::List::new(items);
-            frame.render_widget(list, sections[0]);
-
-            let add_button = if is_add_selected {
-                ratatui::text::Span::styled(
-                    "  [ Add Manifest URL ]",
-                    crate::tui::overlay::selection_style(theme, state.basic_terminal),
-                )
+            let is_add_selected = state.addon_manager_selected == state.installed_addons.len();
+            let add_style = if is_add_selected {
+                theme.text.add_modifier(ratatui::style::Modifier::BOLD)
             } else {
-                ratatui::text::Span::styled("  [ Add Manifest URL ]", theme.sapphire)
+                theme.sapphire
             };
+            let add_prefix_style = if is_add_selected {
+                theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                theme.sapphire
+            };
+            let add_item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw("  "),
+                ratatui::text::Span::styled("+ ", add_prefix_style),
+                ratatui::text::Span::styled("Add manifest URL", add_style),
+                ratatui::text::Span::raw("  "),
+            ]));
+            items.push(add_item);
 
-            let button_line =
-                ratatui::text::Line::from(vec![ratatui::text::Span::raw(" "), add_button]);
-            frame.render_widget(ratatui::widgets::Paragraph::new(button_line), sections[1]);
+            let list = ratatui::widgets::List::new(items)
+                .highlight_style(crate::tui::overlay::selection_style(
+                    theme,
+                    state.basic_terminal,
+                ))
+                .highlight_symbol("");
+
+            let mut list_state = ratatui::widgets::ListState::default();
+            list_state.select(Some(state.addon_manager_selected));
+            frame.render_stateful_widget(list, inner_area, &mut list_state);
         }
     }
 
@@ -2166,9 +2128,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             })
             .collect();
 
-        crate::tui::overlay::picker_with_lines(
+        let popup = crate::tui::overlay::browse_picker_layout(area, &raw_items, 36);
+        crate::tui::overlay::picker_with_lines_at(
             frame,
             area,
+            popup,
             &lines,
             &raw_items,
             &mut state.browse_list_state,
@@ -2194,12 +2158,9 @@ fn suggestion_source_badge<'a>(
             ("[HISTORY]", theme.sapphire)
         } else if suggestion.eq_ignore_ascii_case("/favorites") {
             ("[FAVORITES]", theme.rating)
-        } else if suggestion.eq_ignore_ascii_case("/settings")
-            || suggestion.eq_ignore_ascii_case("/config")
-            || suggestion.eq_ignore_ascii_case("/preferences")
-            || suggestion.eq_ignore_ascii_case("/pref")
-            || suggestion.eq_ignore_ascii_case("/options")
-        {
+        } else if suggestion.eq_ignore_ascii_case("/config") {
+            ("[CONFIG]", theme.lavender)
+        } else if suggestion.eq_ignore_ascii_case("/settings") {
             ("[SETTINGS]", theme.teal)
         } else {
             ("[CMD]", theme.teal)
@@ -2971,6 +2932,85 @@ mod tests {
         assert!(!rendered.contains('●'));
         assert!(!rendered.contains('○'));
     }
+    #[test]
+    fn test_render_home_addon_manager_popup_replaces_search_bar() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState {
+            addon_manager_popup: true,
+            active_provider: crate::providers::models::ProviderKind::Addons,
+            installed_addons: vec![
+                crate::providers::addons::models::InstalledAddon {
+                    manifest_url: "https://x1".into(),
+                    name: "Cinemeta".into(),
+                    version: Some("1.0".into()),
+                    description: None,
+                    enabled: true,
+                    provides_catalog: true,
+                    provides_meta: true,
+                    provides_stream: false,
+                    id_prefixes: vec![],
+                    types: vec![],
+                },
+                crate::providers::addons::models::InstalledAddon {
+                    manifest_url: "https://x2".into(),
+                    name: "CircleFTP Bridge".into(),
+                    version: Some("1.0".into()),
+                    description: None,
+                    enabled: false,
+                    provides_catalog: false,
+                    provides_meta: true,
+                    provides_stream: false,
+                    id_prefixes: vec![],
+                    types: vec![],
+                },
+                crate::providers::addons::models::InstalledAddon {
+                    manifest_url: "https://x3".into(),
+                    name: "HdHub".into(),
+                    version: Some("1.0".into()),
+                    description: None,
+                    enabled: true,
+                    provides_catalog: false,
+                    provides_meta: true,
+                    provides_stream: false,
+                    id_prefixes: vec![],
+                    types: vec![],
+                },
+            ],
+            addon_manager_selected: 2,
+            basic_terminal: false,
+            ..Default::default()
+        };
+        let theme = Theme::mocha();
+        terminal
+            .draw(|frame| {
+                let area = Rect::new(0, 0, 80, 24);
+                draw(frame, area, &mut state, &theme);
+            })
+            .unwrap();
+
+        let mut rendered = String::new();
+        for y in 0..24 {
+            for x in 0..80 {
+                let cell = terminal.backend().buffer().cell((x, y)).unwrap();
+                rendered.push_str(cell.symbol());
+            }
+            rendered.push('\n');
+        }
+        assert!(rendered.contains("Addons"));
+        assert!(rendered.contains("+ Add manifest URL"));
+        assert!(!rendered.contains("[Core]"));
+        assert!(!rendered.contains("[Meta]"));
+        assert!(!rendered.contains('●'));
+        assert!(!rendered.contains('○'));
+        assert!(!rendered.contains('▌'));
+        assert!(!rendered.contains("Search via addons"));
+
+        let line_11: String = (0..80)
+            .map(|x| terminal.backend().buffer().cell((x, 11)).unwrap().symbol())
+            .collect();
+        assert!(line_11.contains("Addons"));
+    }
 
     #[test]
     fn test_search_deck_width_stability() {
@@ -3723,7 +3763,7 @@ mod tests {
     }
 
     #[test]
-    fn test_home_banner_suppressed_when_update_modal_active() {
+    fn test_home_search_bar_suppressed_when_update_modal_active() {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         let mut state = AppState {
@@ -3746,7 +3786,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
 
-        assert!(!content.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
+        assert!(!content.contains("Search movies"));
     }
 
     #[test]

@@ -1,29 +1,23 @@
 # Progress — MovieBox
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 ## Current status
 
-v1.3.1 is installed on this PC. v1.2.0 is the published release. 1.3.0 added an Adults
-section behind a PIN; 1.3.1 fixes that section's scrolling and its PIN prompt, and
-repairs the title matching that left most series with no fallback.
+v1.3.2 is built on this PC. v1.2.0 is the published release, so installed copies
+elsewhere are still on a version that cannot play MovieBox.
 
-**MovieBox has stopped serving video.** At 14:53 on 2026-09-20 a survey of 17 popular
-titles scored 15 playable; at 15:40 the same survey, on the same vendored version,
-scored 0 -- every title answering with the 21-second "update the app" advert that used
-to affect only direct file links, now in place of the DASH manifests as well. A fresh
-token, a clean cache and the previous vendored version all behave identically, so this
-is their servers rather than our state.
+**MovieBox is back.** It never stopped serving video. From 2026-09-20 afternoon its
+play-info answer carries the "update the app" advert in `url` and the real stream only
+inside `signCookie`, in a new `Edge-Cache-Cookie=urlprefix=<base64>` form. Upstream
+MovieBox-Tui v0.1.22 (released 2026-09-20 18:30 UTC) decodes it; 1.3.2 vendors that.
+Survey of 17 popular titles: **15 playable** (0 the evening before). `probe chain` over 20
+titles: **19 with a playable source** (14 in 1.3.1); the one miss, Barbie, is a probe
+artefact -- the probe skips the app's search rescue.
 
-**The outage has not lifted.** A repeat survey on 2026-09-20 evening still scored 0 of
-17 playable, 15 of them advert-only, so every play now depends on the fallbacks.
-
-The app plays through it. Streams come from three sources in order -- MovieBox, then
-4KHDHub, then Stremio addons the user installs. `probe chain` measures how far that
-gets: **14 of 20 popular titles have a playable source** (10 before the 1.3.1 matcher
-fix). The six that do not are Indian releases -- Jawan, Animal, Kalki 2898 AD, Stree 2,
-Munjya -- which 4KHDHub does not carry. That gap closes only by adding a source, not by
-tuning the matcher.
+Streams now come from four sources in order: MovieBox, 4KHDHub, Dramachi, then the
+user's Stremio addons. Dramachi is new and low quality (360p-540p) but covers anime,
+K-dramas and cartoons, which had no fallback at all while MovieBox was dark.
 
 ## Done
 
@@ -40,6 +34,8 @@ tuning the matcher.
 - **Verification** (2026-09-20, v1.1.0/v1.1.1, dev app and installed build): Rust unit tests 15/15; `provider_health` and `dash_health` pass against the live API; hero "Play" opens a real 55-minute episode; the player's back button lands on the details page and stays there, and a second Back reaches Home; a 523 MB download ran, paused at 89.3 MB, resumed at 89.3 MB (not from zero), finished as a 2:28:07 MP4 carrying video and audio, and played offline from the Downloads page; the installed build reported "You're on the latest version" from Settings and then updated itself 1.1.0 -> 1.1.1 unattended.
 - **Vendor upgrade to v0.1.21 (unreleased)** -- our copy was byte-identical to upstream, so a clean tree replacement. Revives 4KHDHub, whose links moved behind a `greenmotors.club` interstitial that the v0.1.20 resolver could not follow: Inception went from 0 of 7 releases to 5 of 5.
 - **Three-tier failover (unreleased)** -- moved out of the player into `commands::streams::streams`, so downloads reach the same alternatives playback does. Errors distinguish MovieBox withholding a title, not carrying it, and the request failing.
+- **Vendor upgrade to v0.1.22 (1.3.2)** -- clean tree replacement. Brings back MovieBox by reading its new signed-cookie DASH format, and adds the Dramachi provider.
+- **Dramachi tier (1.3.2)** -- fourth source, exact-title match, film parts joined into one `edl://` timeline.
 - **Stremio addons (unreleased)** -- Settings -> Extra sources; five commands; Cinemeta bridges MovieBox ids to IMDb ids. Magnet links are dropped.
 - **Search rescue (unreleased)** -- a first page with no results is retried once with one extra word, which recovers titles like Barbie that MovieBox carries but will not return for the bare name.
 - **Measurement tooling (unreleased)** -- `probe survey|mirror|fourkplay|fourkmirrors|rescue|addons` and the `failover_health` test, so "it stopped playing" is answered with numbers in about a minute.
@@ -50,15 +46,17 @@ tuning the matcher.
 
 ## In progress
 
-- Nothing. v1.3.0 adds an Adults section behind a PIN. v1.2.0 is published and installed on this PC.
+- Nothing.
 
 ## Next
 
-1. Release 1.3.0 so the Adults section reaches installed copies.
-2. Send `release/MovieBox_1.2.0_x64-setup.exe` to the friend once, by hand. The copy on
-   this PC had reverted to 1.0.0, which has no updater, so assume theirs may have too.
-2. Watch whether MovieBox comes back. `cargo run --bin probe -- survey` answers it in
-   about a minute; if it returns, nothing needs undoing -- it simply becomes tier one again.
+1. Publish 1.3.2 (`scripts/publish-release.ps1`). Until then every installed copy
+   elsewhere is on 1.2.0, which cannot read MovieBox's new stream format.
+2. Close the gap between an upstream fix and installed copies. The MovieBox fix sat
+   upstream for a day before anyone rebuilt. A scheduled GitHub Actions job could
+   re-vendor each new upstream tag, run the tests and `probe survey`, and publish when
+   they pass -- but it needs the updater key as a repository secret, which is the
+   owner's decision.
 3. Find and document a working HTTP-streaming addon. The addon path is verified as far
    as the id bridge and every guard, but no addon that serves direct HTTP streams was
    installed, so aggregation across a live stream addon is still untested.
@@ -72,7 +70,8 @@ tuning the matcher.
 | Issue | Detail | Workaround |
 |---|---|---|
 | MovieBox serves one quality | When MovieBox worked it granted a single signed DASH manifest per title, so the quality list read "Best available" rather than 1080p/720p/480p | None needed; mpv adapts within the manifest. 4KHDHub offers real 2160p/1080p choices |
-| MovieBox serves no video | Since about 15:40 on 2026-09-20 every title returns only the "update the app" advert, DASH manifests included | The app falls back to 4KHDHub, then to addons. Re-check with `probe survey` |
+| MovieBox changes its stream format without notice | 2026-09-20: the real stream moved into a signed cookie and the `url` field became an advert. Old builds play the advert or nothing | Re-vendor the newest upstream tag, rebuild, publish. `probe survey` tells within a minute whether a new format has landed |
+| Dramachi is low quality | 360p-540p, original-language audio, no separate subtitles, films split into parts | Last built-in tier only; parts are joined for playback, not offered for download |
 | Addon streaming unproven end to end | The id bridge, install guards and aggregation call are verified, but no live HTTP-streaming addon was installed | Torrent-only addons resolve to nothing playable by design |
 | Some titles have no stream | e.g. Dune: Part Two returns an empty stream list from MovieBox | The app says so plainly; nothing to play |
 | SmartScreen warning | The installer is unsigned, so Windows shows "Windows protected your PC" on first run | Documented in `Getting Started.html`: More info → Run anyway. Portable zip as backup |
