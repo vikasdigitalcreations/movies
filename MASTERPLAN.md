@@ -72,6 +72,7 @@ Video and UI are two stacked native layers: mpv draws into a child window, and t
 | E — Verify | Player, library, downloads, series, installer and portable test passes | Done |
 | F — Ship | Rebuild with the pending history-timestamp fix, retest, hand over the installer | Done (v1.0.0, 2026-09-15) |
 | G — Keep it working | Block MovieBox's "update the app" advert clips, download DASH streams with a bundled ffmpeg, auto-update from GitHub Releases | Code done and tested in the dev app; the 1.1.0 release build is next |
+| H — Keep it working without anyone | Five raced sources including YouTube's official film channels, stream prefetch, the mid-seek deadlock fix, and an auto-update workflow that re-vendors, tests and publishes each new MovieBox-Tui release | 1.3.3 built and verified in the installed app; the workflow's dry run is green but it goes live only once the updater key is stored as a GitHub secret and the branch is merged into `main` |
 
 ## Key decisions
 
@@ -91,3 +92,8 @@ Video and UI are two stacked native layers: mpv draws into a child window, and t
 | Bundle ffmpeg (LGPL) to download DASH | With direct files gone, a download means fetching video and audio segments separately and joining them. ffmpeg does that reliably; the alternative was writing a muxer or dropping the Downloads feature. Costs about 50 MB of installer | 2026-09-20 |
 | Fetch segments ourselves, mux at the end | Letting ffmpeg pull the manifest would have been less code but not resumable. Downloading segment by segment keeps pause/resume and honest progress for multi-GB files | 2026-09-20 |
 | Auto-update from public GitHub Releases | The provider will break again; without self-update every fix means re-sending an installer. The app fetches `latest.json` with no credentials, so the repository is public and updates are signature-checked | 2026-09-20 |
+| Official YouTube channels as a source, not any upload | Distributors post complete films on their own channels, which is free and legal to watch; anyone else's upload of the same film is not. Matched by channel id, never by name | 2026-09-21 |
+| Require an agreeing year for YouTube matches | Name-only matching played *Don Seenu* for Don (1978) and the 2013 remake for Zanjeer (1973) in a 28-title trial. A missed film is better than the wrong one | 2026-09-21 |
+| Fetch yt-dlp on demand instead of bundling it | YouTube changes faster than app releases; a bundled copy would go stale in weeks. Each download is checked against the SHA-256 its release publishes | 2026-09-21 |
+| Race the backup sources, keep their rank | One-after-another cost the sum of every failure (13 s for Parasite). Racing keeps the order of preference, with a 12 s grace so a 4K result is not lost to a 540p one that answered first | 2026-09-21 |
+| Automatic releases on GitHub, key only in the publish job | The MovieBox fix sat upstream for a day before anyone rebuilt. The job that compiles upstream code holds no secret; only the publish job, limited to `main`, can sign | 2026-09-21 |

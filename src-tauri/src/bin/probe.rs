@@ -366,6 +366,40 @@ async fn main() {
                 Err(e) => println!("{t} -> {e}"),
             }
         }
+        // The YouTube tier on its own: `probe youtube "Maska" 2020`
+        "youtube" => {
+            let t = args.get(2).cloned().unwrap_or_default();
+            let y = args.get(3).cloned().filter(|y| !y.is_empty());
+            let t0 = std::time::Instant::now();
+            match moviebox_lib::commands::streams::youtube_streams(&t, y.as_deref(), 0, 0).await {
+                Ok(list) => for s in list { println!("{t} -> {} {}p {} size={:?}", s.source, s.height, s.codec.clone().unwrap_or_default(), s.size); },
+                Err(e) => println!("{t} -> {e}"),
+            }
+            println!("{} ms", t0.elapsed().as_millis());
+        }
+        // Does YouTube's official-channel source add anything MovieBox does not already
+        // serve? Arguments are "Title|Year" pairs: `probe ytcover "Maska|2020" "Sholay|1975"`
+        "ytcover" => {
+            let (mut both, mut only_mb, mut only_yt, mut neither) = (0, 0, 0, 0);
+            for spec in &args[2..] {
+                let (t, y) = spec.split_once('|').unwrap_or((spec.as_str(), ""));
+                let hits = svc.search_typed(ProviderKind::MovieBox, t, 1).await.unwrap_or_default();
+                let mb = match hits.first() {
+                    Some(first) => {
+                        let rels = ReleaseProvider::episode_streams(&svc.client, &first.id.value, 0, 0).await.unwrap_or_default();
+                        rels.iter().flat_map(|r| r.mirrors.iter()).any(|m| !m.resolver_url.to_ascii_lowercase().contains("aoneroom.com/other/"))
+                    }
+                    None => false,
+                };
+                let t0 = std::time::Instant::now();
+                let yt = moviebox_lib::commands::streams::youtube_streams(t, Some(y).filter(|y| !y.is_empty()), 0, 0).await;
+                let detail = match &yt { Ok(l) => format!("{}", l.iter().map(|s| format!("{}p", s.height)).collect::<Vec<_>>().join("/")), Err(e) => e.chars().take(50).collect() };
+                println!("{spec:<28} MovieBox={:<5} YouTube={:<5} {detail} ({} ms)", mb, yt.is_ok(), t0.elapsed().as_millis());
+                match (mb, yt.is_ok()) { (true, true) => both += 1, (true, false) => only_mb += 1, (false, true) => only_yt += 1, _ => neither += 1 }
+            }
+            println!("
+both {both}, only MovieBox {only_mb}, ONLY YouTube {only_yt}, neither {neither}");
+        }
         "dramachi" => {
             let titles: Vec<String> = if args.len() > 2 { args[2..].to_vec() } else {
                 ["Squid Game", "Crash Landing on You", "Naruto", "One Piece", "Demon Slayer",

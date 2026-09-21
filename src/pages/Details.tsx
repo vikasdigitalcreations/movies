@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Bookmark, BookmarkCheck, Check, Clock, Download, Play, Star, Languages, MonitorPlay } from "lucide-react";
 import { api, errText, type Card, type Details } from "../lib/api";
-import { epLabel, fmtTime, posterUrl } from "../lib/format";
+import { absIndex, epLabel, fmtTime, posterUrl } from "../lib/format";
 import { Button, ErrorState, IconButton } from "../components/ui";
 import { DownloadDialog, type DlTarget } from "../components/DownloadDialog";
 import { useApp } from "../store/app";
@@ -22,6 +22,7 @@ export function DetailsPage() {
   const [quality, setQuality] = useState<number | null>(null);
   const history = useApp((s) => s.history);
   const toast = useApp((s) => s.toast);
+  const preferredQuality = useApp((s) => s.settings?.preferredQuality);
   const refreshFavorites = useApp((s) => s.refreshFavorites);
   const playNow = usePlayNow();
   const autoDone = useRef(false);
@@ -75,21 +76,30 @@ export function DetailsPage() {
     if (d.mediaType === "series" && d.seasons.length) {
       if (hist && hist.season > 0) {
         if (!hist.completed && hist.progress > 30) {
-          return { label: `Resume ${epLabel(hist.season, hist.episode)} · ${fmtTime(hist.progress)}`, run: () => play(hist.season, hist.episode, null, Math.max(0, hist.progress - 5)) };
+          return { label: `Resume ${epLabel(hist.season, hist.episode)} · ${fmtTime(hist.progress)}`, target: { season: hist.season, episode: hist.episode }, run: () => play(hist.season, hist.episode, null, Math.max(0, hist.progress - 5)) };
         }
         const n = neighbor(d.seasons, hist.season, hist.episode, 1);
-        if (n) return { label: `Play ${epLabel(n.season, n.episode)}`, run: () => play(n.season, n.episode, n.title, 0) };
+        if (n) return { label: `Play ${epLabel(n.season, n.episode)}`, target: { season: n.season, episode: n.episode }, run: () => play(n.season, n.episode, n.title, 0) };
       }
       const s0 = [...d.seasons].sort((a, b) => a.number - b.number)[0];
       const e0 = s0.episodes[0];
-      return { label: "Play", run: () => play(s0.number, e0?.number ?? 1, e0?.title, null) };
+      return { label: "Play", target: { season: s0.number, episode: e0?.number ?? 1 }, run: () => play(s0.number, e0?.number ?? 1, e0?.title, null) };
     }
     if (hist && !hist.completed && hist.progress > 30) {
-      return { label: `Resume · ${fmtTime(hist.progress)}`, run: () => play(0, 0, null, Math.max(0, hist.progress - 5)) };
+      return { label: `Resume · ${fmtTime(hist.progress)}`, target: { season: 0, episode: 0 }, run: () => play(0, 0, null, Math.max(0, hist.progress - 5)) };
     }
-    return { label: "Play", run: () => play(0, 0, null, null) };
+    return { label: "Play", target: { season: 0, episode: 0 }, run: () => play(0, 0, null, null) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d, hist, quality]);
+
+  // Start looking for the stream now, while the person reads the page, so Play has it
+  // already. The player asks for exactly what the main button will play.
+  const targetSeason = main?.target.season;
+  const targetEpisode = main?.target.episode;
+  useEffect(() => {
+    if (!d || targetSeason === undefined || targetEpisode === undefined) return;
+    api.prefetchStreams(d.id, targetSeason, targetEpisode, absIndex(d.seasons, targetSeason, targetEpisode), d.title, d.year, quality ?? preferredQuality ?? 0);
+  }, [d, targetSeason, targetEpisode, quality, preferredQuality]);
 
   useEffect(() => {
     if (!d || autoDone.current) return;

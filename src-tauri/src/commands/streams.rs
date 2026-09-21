@@ -1,8 +1,10 @@
+use crate::core::race::{hedged, pick_best};
 use crate::core::stream_pool::{drop_notice_mirrors, merge_releases, pick_for_quality, sort_best_first};
 use crate::core::types::*;
 use crate::state::AppState;
 use moviebox_tui::providers::moviebox::adapt::moviebox_resource_item_to_release;
 use moviebox_tui::providers::{ProviderKind, Release, ReleaseProvider, ResolutionIntent};
+use futures::future::BoxFuture;
 use std::time::Duration;
 use moviebox_tui::service::MovieBoxService;
 use tauri::State;
@@ -112,12 +114,31 @@ pub async fn collect_streams(service: &MovieBoxService, id: &str, season: usize,
     Ok(pool)
 }
 
-/// Streams for one episode or movie, MovieBox first and the other source behind it.
+/// How long MovieBox gets to answer alone before the other sources start looking too.
+/// It normally answers in under a second, so a healthy MovieBox never causes a request
+/// to the others; this only matters when it is slow or down.
+const HEDGE_AFTER: Duration = Duration::from_secs(5);
+
+/// How much longer a better source gets when a worse one has already answered. A 4K
+/// release from 4KHDHub is worth a wait over a 540p file from Dramachi, but a slow tier
+/// must not hold the whole result hostage. 4KHDHub resolves several mirrors and routinely
+/// needs 10 s or more: with 4 s here, Oppenheimer came back as Dramachi 540p instead of
+/// 4KHDHub 2160p, which the one-after-another order used to find.
+const BACKUP_GRACE: Duration = Duration::from_secs(12);
+
+/// Streams for one episode or movie, MovieBox first and the other sources behind it.
 ///
 /// The failover lives here rather than in the player so that downloads get it too: when
 /// MovieBox withholds a title, "Download" should find the same alternative that "Play"
-/// does. `title`/`year` are what the other source is searched by; without them the
+/// does. `title`/`year` are what the other sources are searched by; without them the
 /// failover is skipped and only MovieBox is consulted.
+///
+/// The other sources are not tried one after another once MovieBox has failed. They start
+/// looking as soon as MovieBox has failed or been slow for `HEDGE_AFTER`, and are asked
+/// together, so a title only the last one carries costs the slowest of them rather than
+/// the sum. Order of preference is unchanged. `primary_only` asks MovieBox alone; the
+/// prefetch that runs when a title's page opens uses it, so merely looking at a title
+/// never sets the heavier 4KHDHub scraper going.
 #[tauri::command]
 pub async fn streams(
     state: State<'_, AppState>,
@@ -128,39 +149,67 @@ pub async fn streams(
     title: Option<String>,
     year: Option<String>,
     preferred: Option<u64>,
+    primary_only: Option<bool>,
 ) -> CmdResult<Vec<StreamDto>> {
-    let problem = match collect_streams(&state.service, &id, season, episode, abs_index).await {
-        Ok(pool) => {
-            let out: Vec<StreamDto> = pool.iter().filter_map(StreamDto::from_release).collect();
-            if !out.is_empty() {
-                return Ok(out);
+    let primary = async {
+        match collect_streams(&state.service, &id, season, episode, abs_index).await {
+            Ok(pool) => {
+                let out: Vec<StreamDto> = pool.iter().filter_map(StreamDto::from_release).collect();
+                if out.is_empty() {
+                    Err(StreamProblem::NotCarried)
+                } else {
+                    Ok(out)
+                }
             }
-            StreamProblem::NotCarried
+            Err(p) => Err(p),
         }
-        Err(p) => p,
     };
-    let Some(title) = title.filter(|t| !t.trim().is_empty()) else {
-        return Err(problem.message());
+    let title = title.filter(|t| !t.trim().is_empty());
+    let Some(title) = title.filter(|_| !primary_only.unwrap_or(false)) else {
+        return primary.await.map_err(|p| p.message());
     };
-    if let Ok(list) = fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred.unwrap_or(0), 4).await {
-        return Ok(list);
-    }
-    if let Ok(list) = dramachi_streams(&state.service, &title, year.as_deref(), season, episode).await {
-        return Ok(list);
-    }
-    // Last, whatever the user's own addons offer. They are tried after the built-in
-    // sources because they are slower and entirely user-configured, but they are the
-    // only tier that keeps working when both built-in providers go dark.
-    let is_series = season > 0 || episode > 0;
-    crate::commands::addons::addon_streams_for(&title, year.as_deref(), is_series, season, episode)
-        .await
-        .map_err(|_| dead_end(&problem))
+    let youtube = state.settings.read().await.youtube_source;
+    let backups = backup_streams(&state.service, &title, year.as_deref(), season, episode, preferred.unwrap_or(0), youtube);
+    hedged(primary, backups, HEDGE_AFTER).await.map_err(|(problem, _)| dead_end(&problem))
 }
 
-/// What to say when all three tiers came back empty.
+/// Every source except MovieBox, asked together, best one wins (see `pick_best`).
+///
+/// Tier order is 4KHDHub, YouTube's official film channels, Dramachi, then the user's
+/// addons. YouTube outranks Dramachi because its films are 720p to 1080p against Dramachi's
+/// 360p to 540p. The addons come last because they are slower and entirely user-configured,
+/// but they are the only tier that keeps working when every built-in provider goes dark.
+/// `youtube` is the user's setting; a tier that is switched off stays in its place, so the
+/// others keep their rank.
+async fn backup_streams(
+    service: &MovieBoxService,
+    title: &str,
+    year: Option<&str>,
+    season: usize,
+    episode: usize,
+    preferred: u64,
+    youtube: bool,
+) -> Result<Vec<StreamDto>, String> {
+    let is_series = season > 0 || episode > 0;
+    let tiers: Vec<BoxFuture<'_, Result<Vec<StreamDto>, String>>> = vec![
+        Box::pin(fourk_streams(service, title, year, season, episode, preferred, 4)),
+        Box::pin(async move {
+            if youtube {
+                youtube_streams(title, year, season, episode).await
+            } else {
+                Err("YouTube is switched off in Settings.".to_string())
+            }
+        }),
+        Box::pin(dramachi_streams(service, title, year, season, episode)),
+        Box::pin(crate::commands::addons::addon_streams_for(title, year, is_series, season, episode)),
+    ];
+    pick_best(tiers, BACKUP_GRACE).await.map_err(|errors| errors.into_iter().last().unwrap_or_default())
+}
+
+/// What to say when every source came back empty.
 ///
 /// The old wording ended in "try again later", which is what sent people round the same
-/// title over and over. When the user has no addons installed there is a third tier
+/// title over and over. When the user has no addons installed there is a last tier
 /// sitting unused, and pointing at it is more use than asking them to wait.
 fn dead_end(problem: &StreamProblem) -> String {
     let has_addons = moviebox_tui::config::load_addons().iter().any(|a| a.enabled && a.provides_stream);
@@ -350,8 +399,8 @@ pub async fn fourk_streams(
     Ok(out)
 }
 
-/// The non-MovieBox tiers, in order, for callers outside the `streams` command
-/// (the download queue refreshing a link that died mid-transfer).
+/// The non-MovieBox tiers, for callers outside the `streams` command (the download queue
+/// refreshing a link that died mid-transfer).
 pub async fn other_source_streams(
     service: &MovieBoxService,
     title: &str,
@@ -360,22 +409,16 @@ pub async fn other_source_streams(
     episode: usize,
     preferred: u64,
 ) -> Result<Vec<StreamDto>, String> {
-    if let Ok(list) = fourk_streams(service, title, year, season, episode, preferred, 4).await {
-        return Ok(list);
-    }
-    if let Ok(list) = dramachi_streams(service, title, year, season, episode).await {
-        return Ok(list);
-    }
-    crate::commands::addons::addon_streams_for(title, year, season > 0 || episode > 0, season, episode).await
+    // A download needs one file it can fetch; YouTube's films are two files joined by the
+    // player, so this path never asks for them.
+    backup_streams(service, title, year, season, episode, preferred, false).await
 }
 
 /// "Try another source", kept for the player's mid-playback retry.
 #[tauri::command]
 pub async fn alternate_source(state: State<'_, AppState>, title: String, year: Option<String>, season: usize, episode: usize, preferred: u64) -> CmdResult<StreamDto> {
-    let mut list = match fourk_streams(&state.service, &title, year.as_deref(), season, episode, preferred, 4).await {
-        Ok(list) => list,
-        Err(e) => dramachi_streams(&state.service, &title, year.as_deref(), season, episode).await.map_err(|_| e)?,
-    };
+    let youtube = state.settings.read().await.youtube_source;
+    let mut list = backup_streams(&state.service, &title, year.as_deref(), season, episode, preferred, youtube).await?;
     Ok(list.remove(0))
 }
 
@@ -428,6 +471,16 @@ pub async fn dramachi_streams(
         return Err("No other source has this title.".into());
     }
     Ok(out)
+}
+
+/// Streams from the official YouTube channels of film distributors. Films only: those
+/// channels do not carry series episodes, and matching an episode by name would guess.
+pub async fn youtube_streams(title: &str, year: Option<&str>, season: usize, episode: usize) -> Result<Vec<StreamDto>, String> {
+    if season > 0 || episode > 0 {
+        return Err("YouTube's film channels carry films, not episodes.".into());
+    }
+    let clean = strip_season(moviebox_tui::providers::moviebox::clean_moviebox_title(title)).trim().to_string();
+    crate::core::youtube::find(&clean, &norm_title(title), year.unwrap_or_default()).await
 }
 
 /// An mpv `edl://` address that plays several files back to back as one. Each entry is

@@ -133,6 +133,9 @@ export function PlayerPage() {
 
   const streamsRef = useRef<Stream[]>([]);
   const attempt = useRef({ index: 0, triedAlt: false, started: false, token: 0 });
+  // False once this page has been left. Timers and retries started earlier check it, so a
+  // Player that is gone can never load a video into the engine the next Player is using.
+  const alive = useRef(true);
   const live = useRef({ pos: 0, duration: 0, paused: false, volume: 100, speed: 1 });
   const hideTimer = useRef<number | undefined>(undefined);
   const osdTimer = useRef<number | undefined>(undefined);
@@ -167,7 +170,9 @@ export function PlayerPage() {
     document.body.classList.add("playing");
     api.keepAwake(true, true).catch(() => {});
     poke();
+    alive.current = true;
     return () => {
+      alive.current = false;
       document.body.classList.remove("playing");
       api.keepAwake(false, false).catch(() => {});
       mpv.stop().catch(() => {});
@@ -269,7 +274,7 @@ export function PlayerPage() {
   const startStream = useCallback(
     async (list: Stream[], index: number, startPos: number) => {
       const s = list[index];
-      if (!s) return;
+      if (!s || !alive.current) return;
       const token = ++attempt.current.token;
       attempt.current.index = index;
       attempt.current.started = false;
@@ -284,7 +289,7 @@ export function PlayerPage() {
         if (token === attempt.current.token) failRef.current(errText(e));
       }
       window.setTimeout(() => {
-        if (token === attempt.current.token && !attempt.current.started) failRef.current("timeout");
+        if (alive.current && token === attempt.current.token && !attempt.current.started) failRef.current("timeout");
       }, 60000);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,7 +297,7 @@ export function PlayerPage() {
   );
 
   const handleFailure = async (_why?: string) => {
-    if (!session) return;
+    if (!session || !alive.current) return;
     const a = attempt.current;
     const at = live.current.pos > 1 ? live.current.pos : resumeAtRef.current;
     const list = streamsRef.current;
@@ -349,6 +354,13 @@ export function PlayerPage() {
       setPos(0);
       setDuration(0);
       attempt.current = { index: 0, triedAlt: false, started: false, token: attempt.current.token + 1 };
+      const r = session.ref;
+      // Looking for the stream and starting the video engine are independent and each takes
+      // a second or so, so they run together. The catch only keeps a failure that lands
+      // while the engine is still starting from being reported as unhandled; it is handled
+      // where the result is awaited below.
+      const looking = session.localPath || session.directStream ? null : api.streams(r.id, r.season, r.episode, absIndex(session.seasons, r.season, r.episode), r.title, r.year, pref);
+      looking?.catch(() => {});
       try {
         await playerInit({ volume: settings.volume, subSize: settings.subtitleSize, subBackground: settings.subtitleBackground });
       } catch (e) {
@@ -357,7 +369,6 @@ export function PlayerPage() {
         return;
       }
       await mpv.stop().catch(() => {});
-      const r = session.ref;
       let list: Stream[];
       if (session.localPath) {
         list = [{ label: "Downloaded", height: 0, multi: false, url: session.localPath, headers: [], downloadable: false, source: "This PC" }];
@@ -365,7 +376,7 @@ export function PlayerPage() {
         list = [session.directStream];
       } else {
         try {
-          list = await api.streams(r.id, r.season, r.episode, absIndex(session.seasons, r.season, r.episode), r.title, r.year, pref);
+          list = await looking!;
         } catch (e) {
           if (cancelled) return;
           streamsRef.current = [];

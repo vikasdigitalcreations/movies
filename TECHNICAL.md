@@ -51,7 +51,7 @@ Target platform: Windows 10/11 x64 only. Product name `MovieBox`, bundle identif
 | tauri-plugin-process | 2.3 | Restart after an update is installed |
 | moviebox-tui | 0.1.20 (path `../vendor/moviebox-tui`) | Providers, service, download engine, history, favorites |
 | serde / serde_json | 1 | DTO serialisation (camelCase across the bridge) |
-| tokio | 1 (`rt-multi-thread`, `macros`, `sync`, `time`, `fs`) | Async runtime for commands and the download queue |
+| tokio | 1 (`rt-multi-thread`, `macros`, `sync`, `time`, `fs`, `process`) | Async runtime for commands and the download queue; `process` runs yt-dlp |
 | reqwest | 0.12 (`rustls-tls-webpki-roots`, `stream`) | HTTP for download workers and connectivity checks |
 | futures | 0.3 | Stream combinators in the download path |
 | log | 0.4 | Logging facade |
@@ -96,7 +96,9 @@ Release profile: `codegen-units = 1`, `lto = "thin"`, `opt-level = 3`, `panic = 
 | MovieBox CDN (`*.hakunaymatata.com` and peers) | DASH manifests and their video/audio segments | Per-stream `Referer`, `User-Agent` and `Cookie` headers returned with the play info |
 | 4KHDHub | Second source, reached through the `greenmotors.club` mediator | None |
 | Cinemeta (`v3-cinemeta.strem.io`) | Turns a title and year into an IMDb id so addons can be asked | None |
-| Stremio addons | Third source, whatever the user installs | Whatever that addon requires |
+| YouTube, through yt-dlp | Third source: full films from a fixed list of verified distributor channels (`OFFICIAL_CHANNELS`) | None |
+| yt-dlp releases (`github.com/yt-dlp/yt-dlp/releases/latest/download`) | The `yt-dlp.exe` helper and its `SHA2-256SUMS`, fetched on first use and refreshed at most every three days | None; the download is checked against the published SHA-256 |
+| Stremio addons | Last source, whatever the user installs | Whatever that addon requires |
 | GitHub Releases (`github.com/vikasdigitalcreations/movies`) | `latest.json` update feed and the installer it points at | None; the repo is public so the app needs no token. Updates are rejected unless signed by the project key |
 
 Since September 2026 the API answers every **direct file** link (`macdn.aoneroom.com/other/…`) with a 21-second "Update now. Keep watching." advert instead of the video — the same clip for every title, movies and episodes alike. `core/stream_pool::is_notice_url` recognises those links and drops them, so only the signed DASH manifest is used. On 2026-09-20 the substitution spread to the DASH manifests too and MovieBox stopped serving video altogether -- a survey of 17 popular titles went from 15 playable to 0 inside an hour, unchanged by a fresh token or a clean cache. Streams therefore fall back to 4KHDHub and then to the user's addons, and the app plays through the outage. The outage was still in force that evening (0 of 17 playable), and `probe chain` puts the app's overall reach at **14 of 20 popular titles**; the misses are Indian releases, which 4KHDHub does not carry. Matching a title across sources is deliberately strict on the name and loose on the year: MovieBox decorates a series title with the seasons it carries and reports the season's year rather than the series' first year, so `norm_title` strips season markers and the year is used to rank candidates instead of to exclude them. The CDN returns **HTTP 428** for browser-like user agents and 206 for curl/okhttp/libmpv-style agents, so downloads and direct playback send the MovieBox client agent (`service.client.user_agent()`) and the player falls back to `libmpv`. No user data, account or email is ever sent to these services.
@@ -146,6 +148,9 @@ MovieBoxApp/
       system.rs                 settings, system info, free space, folders, logs, cache, keep-awake, online check
     src/core/
       stream_pool.rs            Merge/dedupe/order releases, quality pick, advert-clip filter (unit-tested)
+      race.rs                   pick_best and hedged: how the backup sources are asked together (unit-tested)
+      youtube.rs                YouTube source: official-channel list, title and year matching, format-to-stream building (unit-tested)
+      ytdlp.rs                  Fetches, verifies and runs the yt-dlp helper (unit-tested)
       dash.rs                   DASH manifest parsing, resumable segment download, ffmpeg mux (unit-tested)
       downloads.rs              Persistent queue, workers, retries, cleanup, notifications (unit-tested)
       settings.rs               GuiSettings struct, load and save gui_settings.json
@@ -159,6 +164,9 @@ MovieBoxApp/
     tauri.conf.json             Window, bundle, NSIS and resource configuration
   vendor/moviebox-tui/          MovieBox-Tui v0.1.22, unmodified
   scripts/make-portable.ps1     Stages the portable folder and zips it
+  scripts/publish-release.ps1   Builds, signs and publishes a release (-Target, -DryRun, -SkipBuild)
+  scripts/auto-update-docs.py   Keeps the docs true after the workflow re-vendors MovieBox-Tui
+  .github/workflows/auto-update.yml   Automatic re-vendor, test, build and publish
   release/                      Built installer and portable zip (gitignored)
 ```
 
@@ -166,7 +174,9 @@ MovieBoxApp/
 
 **Browsing:** page calls `api.*` in `lib/api.ts` → `invoke` → Rust command → `MovieBoxService` (vendored) → MovieBox API → camelCase DTO → page. Home results are cached in memory for 10 minutes per tab; details are cached for the session. Both caches are dropped by `clear_cache`.
 
-**Playing:** Details → `streams` tries four sources in order and takes the first that answers: MovieBox, then 4KHDHub matched on title and year, then Dramachi on the same exact-title rule, then the user's Stremio addons (matched through Cinemeta to an IMDb id). MovieBox's real stream is a DASH manifest whose address is base64-encoded inside the `Edge-Cache-Cookie` it returns as `signCookie`; the same cookie goes to mpv as a header. Dramachi films arrive in parts and are joined into one mpv `edl://` timeline. The failover lives in the command rather than the player so downloads share it. MovieBox releases then go through `stream_pool`, which merges mirrors, drops duplicates and orders best-first → the page picks the best at or below the preferred quality → `Player.tsx` calls `playerInit`, then loads the URL with its headers → mpv renders into the child window while React draws the controls above it. Progress is written through `history_progress` every 10 s and on exit; at 90% or more the title is marked watched.
+**Playing:** opening Details starts `api.prefetchStreams` for the episode the main button will play (MovieBox only, kept two minutes, used once). Pressing Play → `Player.tsx` asks for the streams *while* it starts the video engine, so the two waits overlap. `streams` asks MovieBox first. If MovieBox fails, or says nothing for 5 s, the backup sources start looking and are then asked together (`core/race.rs`: `hedged` for MovieBox-then-backups, `pick_best` among the backups). The order of preference is MovieBox, then 4KHDHub matched on title and year, then YouTube's official film channels, then Dramachi on the same exact-title rule, then the user's Stremio addons (matched through Cinemeta to an IMDb id); a better tier gets 12 s longer when a worse one has already answered. MovieBox's real stream is a DASH manifest whose address is base64-encoded inside the `Edge-Cache-Cookie` it returns as `signCookie`; the same cookie goes to mpv as a header. Dramachi films arrive in parts and are joined into one mpv `edl://` timeline; YouTube films arrive as a video file and an audio file and are joined the same way with `!new_stream`. Both are marked not downloadable. The failover lives in the command rather than the player so downloads share it. MovieBox releases then go through `stream_pool`, which merges mirrors, drops duplicates and orders best-first → the page picks the best at or below the preferred quality → `Player.tsx` calls `playerInit`, then loads the URL with its headers → mpv renders into the child window while React draws the controls above it. Anything that ends the current file (leaving the player, switching quality or episode) goes through `lib/player.ts`, which pauses and waits for mpv to finish any seek first, because libmpv deadlocks if a file is torn down mid-seek. Progress is written through `history_progress` every 10 s and on exit; at 90% or more the title is marked watched.
+
+**YouTube source:** `youtube_streams` → `core/youtube::find` → `core/ytdlp::run`. yt-dlp is not shipped. `ytdlp::ensure` downloads `yt-dlp.exe` from yt-dlp's GitHub releases on first use, verifies it against the `SHA2-256SUMS` that release publishes, and keeps it in `%LOCALAPPDATA%\MovieBox\tools`; at most every three days it compares the published checksum with the local file and replaces it if newer. `find` runs `yt-dlp ytsearch20:<title> full movie --flat-playlist -j`, keeps only uploads from `OFFICIAL_CHANNELS` (matched by channel id) that run 70 minutes or more, whose title starts with the film's name and states a year that agrees, then runs `yt-dlp -J` on the winner and builds one stream per quality from 360p to 1080p (h264 preferred). The process is started without a window and killed if the caller stops waiting.
 
 **Downloading:** `DownloadDialog` → `download_add` → `DownloadManager` builds the destination path, checks free space, persists the task to `downloads.json`, then a worker takes one of two paths. A direct file goes through the vendored resumable `download::download()` with the MovieBox user agent; partial files are `<dest>.part`, `<dest>.part.json` and `<dest>.part.N`, and a 401/403/404/410 triggers a fresh URL fetch and a retry. A DASH stream goes through `core/dash.rs`: the manifest is parsed, the chosen video and audio segments are appended to `<dest>.part.video` and `<dest>.part.audio` with the segment counts kept in `<dest>.part.json` (so pause and resume continue rather than restart), and the bundled ffmpeg copies both into the final file. Progress is emitted as `download://progress` on every tick, removal as `download://removed`. On completion the subtitle is saved beside the video and a Windows notification fires.
 
@@ -182,6 +192,7 @@ The app needs **no environment variables**. Everything is stored in files.
 |---|---|
 | `%APPDATA%\MovieBox\gui_settings.json` | GUI settings (quality, subtitle language and size, autoplay, seek step, download dir, volume, zoom, tour done) |
 | `%APPDATA%\MovieBox\downloads.json` | Download queue, so it survives restarts |
+| `%LOCALAPPDATA%\MovieBox\tools\yt-dlp.exe` (and `yt-dlp.checked`) | The YouTube helper, fetched on first use; the marker's age says when it was last compared with the published release |
 | `%APPDATA%\moviebox-tui\history.json` | Watch history and resume points, shared with the terminal app |
 | `%APPDATA%\moviebox-tui\favorites.json` | My List, shared with the terminal app |
 | `%LOCALAPPDATA%\com.moviebox.desktop\logs\moviebox.log` | Rotating log (2 MB, 3 kept), opened by "Report a problem" |
@@ -207,17 +218,22 @@ No secrets, keys or tokens exist in this project.
 | `src/components/Updater.tsx` | Launch update check with a countdown, progress card, restart, and the manual check used by Settings → About |
 | `src-tauri/src/core/types.rs` | Every DTO crossing the bridge plus `friendly()`, which turns provider errors into plain sentences |
 | `src-tauri/src/commands/catalog.rs` | Homepage JSON walking (group types, subject detection), search, suggest and details with caching |
-| `src-tauri/src/commands/streams.rs` | Stream collection per episode, the four-tier failover and its `StreamProblem` reasons, subtitle listing and fetching, the confident-match-only 4KHDHub and Dramachi resolution |
+| `src-tauri/src/commands/streams.rs` | Stream collection per episode, the raced five-tier failover and its `StreamProblem` reasons, subtitle listing and fetching, the confident-match-only 4KHDHub, YouTube and Dramachi resolution |
+| `src-tauri/src/core/race.rs` | `pick_best` (all tiers at once, best rank wins, grace for a better tier) and `hedged` (backups start when the primary is slow or fails) |
+| `src-tauri/src/core/youtube.rs` | `OFFICIAL_CHANNELS`, `title_matches`, `year_agrees`, `is_wanted`, `build_streams`, `edl_pair`, `find` |
+| `src-tauri/src/core/ytdlp.rs` | `ensure` (fetch, verify, refresh), `run` (no window, killed on drop), `published_hash` |
 | `src-tauri/src/commands/addons.rs` | Stremio addon install/remove/toggle, the Cinemeta id bridge, and stream aggregation across enabled addons |
 | `src/components/AddonsSettings.tsx` | Settings → Extra sources: paste a link, toggle, remove |
-| `src-tauri/src/bin/probe.rs` | Developer probe. `survey` counts playable titles, `chain` walks the app's own failover per title and says where it stops, `dramachi` measures that provider's coverage and `dtier` runs the app's Dramachi tier on one title, `mirror` decodes a stream's CloudFront policy, `fourkplay`/`fourkmirrors` separate a dead source from a stale resolver, `addons` checks the id bridge |
+| `src-tauri/src/bin/probe.rs` | Developer probe. `survey` counts playable titles (and ends with a fixed `SURVEY playable=N total=M` line), `chain` walks the app's own failover per title and says where it stops, `youtube` runs the YouTube tier on one title and `ytcover` compares it with MovieBox over a list, `dramachi` measures that provider's coverage and `dtier` runs the app's Dramachi tier on one title, `mirror` decodes a stream's CloudFront policy, `fourkplay`/`fourkmirrors` separate a dead source from a stale resolver, `addons` checks the id bridge |
 | `src-tauri/src/commands/system.rs` | Settings, paths, free space, folder and log opening, cache clearing, connectivity, and a dedicated keep-awake thread (the Windows execution state is per-thread) |
-| `src/lib/player.ts` | mpv initial options, observed properties, typed property and command helpers |
+| `src/lib/player.ts` | mpv initial options, observed properties, typed property and command helpers, and `settle()`, which every file-ending command waits on so mpv is never torn down mid-seek |
 | `src/pages/Player.tsx` | Player behaviour: shortcuts, OSD, menus, Up Next, sleep timer, night mode, mini player, resume |
 | `src/store/app.ts` | Global store and the single source of truth for settings and the download list |
 
 ## Scheduling / jobs / deployment infra
 
-No server, no CI and no scheduled job. Releases are built locally by `scripts/publish-release.ps1`, which signs the installer with the updater key, writes `release/latest.json` and pushes both to GitHub Releases with `gh`. Installed copies read that feed on every launch, so the only manual distribution step is the very first install (`MovieBox_1.1.1_x64-setup.exe`, with the portable zip as a fallback).
+There is no server. Releases are built by `scripts/publish-release.ps1` (locally) or by `.github/workflows/auto-update.yml` (on GitHub). Either way the installer is signed with the updater key, `release/latest.json` is written, and both go to GitHub Releases with `gh`. Installed copies read that feed on every launch.
+
+The workflow runs every four hours on `main`. Job `check` (ubuntu, `scripts/auto-update-plan.sh`) picks the commit to build on -- the default branch, or the last release's commit when the default branch is older, which it is after every automatic release until its pull request is merged, so updates chain without anyone merging -- and compares the vendored MovieBox-Tui version there with upstream's latest release. Job `build` (windows, **no secrets**) re-vendors the new tag as a tree replacement, bumps the patch version from the last release, runs `cargo test --release --lib` and `tsc`, surveys 17 popular titles before and after (publishes only if the count did not fall by more than one and is at least one), runs the `dash_health` download check, builds the installer, rehearses signing with a throwaway key, and uploads the installer plus a patch. Job `publish` (windows, environment `release`) applies the patch on branch `auto/vendor-<tag>`, signs with the `TAURI_UPDATER_KEY` secret, cuts the release with the tag on that commit, and checks the feed serves the new version. Job `notify` opens an issue if anything failed. The `release` environment only accepts runs from `main`, so a branch cannot read the key, and upstream code is only ever compiled in `build`, which never sees it. Run by hand with `dry_run` on (the default) to rehearse everything except `publish`; pushing a branch named `ci-dry-run` does the same.
 
 The updater signing key lives at `%USERPROFILE%\.tauri\moviebox_updater.key` and is **not** in the repository. Losing it means installed copies will refuse every future update, and the only fix is reinstalling by hand.

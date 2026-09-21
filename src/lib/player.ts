@@ -117,7 +117,34 @@ function headerOption(headers: [string, string][]) {
   return { ua, referer, fields: rest.join(",") };
 }
 
+/**
+ * Waits until mpv has finished any seek it is in the middle of.
+ *
+ * mpv deadlocks if the current file is torn down while it is still seeking, and every
+ * resume does exactly that on a DASH stream: `start=N` is a seek. The core thread ends up
+ * waiting forever on the demuxer, and from then on each `loadfile` is accepted but never
+ * begins opening, so the player is dead until the app restarts. Reproduced with the
+ * bundled libmpv by loading a stream at start=4217 and sending `stop` about 1.5 s later;
+ * waiting for `seeking` to clear first made the same sequence safe every time. So anything
+ * that ends the current file -- leaving the player, switching quality or episode -- settles
+ * first. It is bounded, so a seek that never ends cannot hold the app up.
+ */
+async function settle(maxMs = 8000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxMs) {
+    let seeking = false;
+    try {
+      seeking = (await getProperty("seeking", "flag")) === true;
+    } catch {
+      return;
+    }
+    if (!seeking) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 export async function load(url: string, headers: [string, string][], start: number) {
+  await settle();
   const { ua, referer, fields } = headerOption(headers);
   // The CDN rejects browser-like user agents that lack browser headers (HTTP 428), so fall back to libmpv's own.
   await setProperty("user-agent", ua ?? "libmpv");
@@ -132,7 +159,13 @@ export const mpv = {
   command,
   set: setProperty,
   get: getProperty,
-  stop: () => command("stop", []),
+  stop: async () => {
+    // Pause first: the seek being waited out is about to finish and start playing, and
+    // nothing should be heard from a player the person has already left.
+    await setProperty("pause", true).catch(() => {});
+    await settle();
+    await command("stop", []);
+  },
   seek: (sec: number, mode: "relative" | "absolute" | "absolute-percent" = "relative") =>
     command("seek", [String(sec), mode]),
   frameStep: () => command("frame-step", []),

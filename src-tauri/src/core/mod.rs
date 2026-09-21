@@ -1,6 +1,9 @@
 pub mod adult;
 pub mod dash;
 pub mod downloads;
+pub mod race;
 pub mod settings;
 pub mod stream_pool;
 pub mod types;
+pub mod youtube;
+pub mod ytdlp;

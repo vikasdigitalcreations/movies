@@ -4,8 +4,14 @@ Last updated: 2026-09-21
 
 ## Current status
 
-v1.3.2 is built on this PC. v1.2.0 is the published release, so installed copies
-elsewhere are still on a version that cannot play MovieBox.
+v1.3.2 is published (GitHub release, 2026-09-21), so copies on 1.2.0 update themselves on
+their next launch. v1.3.3 is built and installed on this PC, not yet published.
+
+1.3.3 adds YouTube's official film channels as a fifth source, starts Play sooner,
+asks the backup sources together, fixes a player deadlock after a resume, and adds the
+automatic-update workflow. The workflow is proven by a dry run on GitHub but is **not
+live**: it needs the updater key stored as the `TAURI_UPDATER_KEY` secret of the `release`
+environment and the branch merged into `main`. See SETUP_GUIDE.md, "Automatic updates".
 
 **MovieBox is back.** It never stopped serving video. From 2026-09-20 afternoon its
 play-info answer carries the "update the app" advert in `url` and the real stream only
@@ -15,9 +21,10 @@ Survey of 17 popular titles: **15 playable** (0 the evening before). `probe chai
 titles: **19 with a playable source** (14 in 1.3.1); the one miss, Barbie, is a probe
 artefact -- the probe skips the app's search rescue.
 
-Streams now come from four sources in order: MovieBox, 4KHDHub, Dramachi, then the
-user's Stremio addons. Dramachi is new and low quality (360p-540p) but covers anime,
-K-dramas and cartoons, which had no fallback at all while MovieBox was dark.
+Streams come from five sources in order: MovieBox, 4KHDHub, YouTube's official film
+channels, Dramachi, then the user's Stremio addons. The four backups are asked together.
+Dramachi is low quality (360p-540p) but covers anime, K-dramas and cartoons; YouTube
+adds Hindi dubs and classic Bollywood at up to 1080p.
 
 ## Done
 
@@ -36,6 +43,11 @@ K-dramas and cartoons, which had no fallback at all while MovieBox was dark.
 - **Three-tier failover (unreleased)** -- moved out of the player into `commands::streams::streams`, so downloads reach the same alternatives playback does. Errors distinguish MovieBox withholding a title, not carrying it, and the request failing.
 - **Vendor upgrade to v0.1.22 (1.3.2)** -- clean tree replacement. Brings back MovieBox by reading its new signed-cookie DASH format, and adds the Dramachi provider.
 - **Dramachi tier (1.3.2)** -- fourth source, exact-title match, film parts joined into one `edl://` timeline.
+- **YouTube tier (1.3.3)** -- official distributor channels only, strict name and year match, played through `edl://` `!new_stream`; yt-dlp fetched on demand and checksum-verified.
+- **Raced backup sources and prefetch (1.3.3)** -- `core/race.rs` (`pick_best`, `hedged`) with ten unit tests; `api.prefetchStreams` from the Details page.
+- **Player deadlock fix (1.3.3)** -- never end an mpv file mid-seek (`settle()` in `lib/player.ts`).
+- **Auto-update workflow (1.3.3, not yet live)** -- `.github/workflows/auto-update.yml`; dry run green on GitHub in 38 min on a cold cache.
+- **Verification** (2026-09-21, installed v1.3.3 over CDP): unit tests 50/50 and `tsc` clean; `streams` answers Jawan and Breaking Bad from MovieBox in 0.7-0.8 s; click to picture 1.6-3.1 s; the resume-then-leave-then-play sequence that left 1.3.2's player stuck on "Starting video" now plays three titles in a row; leaving a player before its video starts leaves the engine idle for the 100 s watched, with no input; searching Mother India, opening it and pressing Play plays YouTube 1080p for the full 2 h 56 min, and a jump to 50 min keeps playing; the Settings switch turns the tier off and on with the PIN untouched.
 - **Stremio addons (unreleased)** -- Settings -> Extra sources; five commands; Cinemeta bridges MovieBox ids to IMDb ids. Magnet links are dropped.
 - **Search rescue (unreleased)** -- a first page with no results is retried once with one extra word, which recovers titles like Barbie that MovieBox carries but will not return for the bare name.
 - **Measurement tooling (unreleased)** -- `probe survey|mirror|fourkplay|fourkmirrors|rescue|addons` and the `failover_health` test, so "it stopped playing" is answered with numbers in about a minute.
@@ -50,25 +62,25 @@ K-dramas and cartoons, which had no fallback at all while MovieBox was dark.
 
 ## Next
 
-1. Publish 1.3.2 (`scripts/publish-release.ps1`). Until then every installed copy
-   elsewhere is on 1.2.0, which cannot read MovieBox's new stream format.
-2. Close the gap between an upstream fix and installed copies. The MovieBox fix sat
-   upstream for a day before anyone rebuilt. A scheduled GitHub Actions job could
-   re-vendor each new upstream tag, run the tests and `probe survey`, and publish when
-   they pass -- but it needs the updater key as a repository secret, which is the
-   owner's decision.
+1. Turn the automatic updates on: store the updater key as the `TAURI_UPDATER_KEY`
+   secret of the `release` environment (one command, SETUP_GUIDE.md) and merge the
+   branch into `main`. Until both are done nothing publishes by itself.
+2. Publish 1.3.3 (`scripts/publish-release.ps1 -Target (git rev-parse HEAD)`).
 3. Find and document a working HTTP-streaming addon. The addon path is verified as far
    as the id bridge and every guard, but no addon that serves direct HTTP streams was
    installed, so aggregation across a live stream addon is still untested.
 4. Optional: strip `probe.exe` from the bundle (about 11 MB) -- though it is now the
    diagnostic tool, so shipping it may be worth the size.
-5. Track upstream. Seven releases landed in the month to v0.1.21; a pinned vendor copy
-   goes stale within days of a provider change.
+5. Track upstream -- done by the auto-update workflow once it is switched on (item 1).
 
 ## Known issues / blockers
 
 | Issue | Detail | Workaround |
 |---|---|---|
+| YouTube only helps for some films | Big releases are not on free official channels (Vikram, KGF 2, RRR, Dangal, 3 Idiots and Inception were all absent), so it adds classics and mid-budget Hindi dubs. Uploads with no year in the title are refused on purpose, which also turns away some right answers (Kaithi) | None needed; it is a fallback |
+| YouTube can only rescue titles the app can find | The app's search is MovieBox's, so a film reaches the YouTube tier only when MovieBox lists it without a stream (Mother India, Dear Comrade do; Pyaasa's only hit is a different film) | A YouTube-backed catalogue row would surface the rest |
+| yt-dlp can break when YouTube changes | It is fetched fresh at most every three days, but a break can outlast that. Antivirus may also quarantine the downloaded program | The tier fails quietly and the next source answers; the Settings switch turns it off |
+| Joined films cannot be downloaded | YouTube and multi-part Dramachi films are two or more files joined by the player | Play only |
 | MovieBox serves one quality | When MovieBox worked it granted a single signed DASH manifest per title, so the quality list read "Best available" rather than 1080p/720p/480p | None needed; mpv adapts within the manifest. 4KHDHub offers real 2160p/1080p choices |
 | MovieBox changes its stream format without notice | 2026-09-20: the real stream moved into a signed cookie and the `url` field became an advert. Old builds play the advert or nothing | Re-vendor the newest upstream tag, rebuild, publish. `probe survey` tells within a minute whether a new format has landed |
 | Dramachi is low quality | 360p-540p, original-language audio, no separate subtitles, films split into parts | Last built-in tier only; parts are joined for playback, not offered for download |

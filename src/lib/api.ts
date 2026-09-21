@@ -178,6 +178,7 @@ export interface Settings {
   nightMode: boolean;
   uiZoom: number;
   tourDone: boolean;
+  youtubeSource: boolean;
 }
 
 export interface SystemInfo {
@@ -187,6 +188,23 @@ export interface SystemInfo {
   screenshotDir: string;
   freeBytes?: number | null;
 }
+
+// ---- stream prefetch -------------------------------------------------------
+// Links stay good for far longer than this (a signed MovieBox link was still fetchable
+// eleven minutes after it was issued); the short life is so a stale answer is never reused.
+const PREFETCH_TTL_MS = 120_000;
+const prefetched = new Map<string, { at: number; p: Promise<Stream[]> }>();
+const streamsKey = (id: string, season: number, episode: number, preferred?: number) => `${id}|${season}|${episode}|${preferred ?? 0}`;
+const askStreams = (
+  id: string,
+  season: number,
+  episode: number,
+  absIndex: number,
+  title: string | undefined,
+  year: string | null | undefined,
+  preferred: number | undefined,
+  primaryOnly: boolean,
+) => invoke<Stream[]>("streams", { id, season, episode, absIndex, title: title ?? null, year: year ?? null, preferred: preferred ?? null, primaryOnly });
 
 export const api = {
   home: (tab: string) => invoke<HomeRow[]>("home", { tab }),
@@ -219,8 +237,33 @@ export const api = {
   addonsToggle: (url: string, enabled: boolean) => invoke<void>("addons_toggle", { url, enabled }),
   addonStreams: (title: string, year: string | null | undefined, isSeries: boolean, season: number, episode: number) =>
     invoke<Stream[]>("addon_streams", { title, year: year ?? null, isSeries, season, episode }),
-  streams: (id: string, season: number, episode: number, absIndex: number, title?: string, year?: string | null, preferred?: number) =>
-    invoke<Stream[]>("streams", { id, season, episode, absIndex, title: title ?? null, year: year ?? null, preferred: preferred ?? null }),
+  /**
+   * Looks for a title's streams before anyone presses Play, so Play has them already.
+   * Asks MovieBox alone: merely opening a page must not set the heavier backup scrapers
+   * going. If MovieBox has nothing the entry is dropped and `streams` does the full search.
+   */
+  prefetchStreams: (id: string, season: number, episode: number, absIndex: number, title?: string, year?: string | null, preferred?: number) => {
+    const k = streamsKey(id, season, episode, preferred);
+    const hit = prefetched.get(k);
+    if (hit && Date.now() - hit.at < PREFETCH_TTL_MS) return;
+    const entry = { at: Date.now(), p: askStreams(id, season, episode, absIndex, title, year, preferred, true) };
+    prefetched.set(k, entry);
+    entry.p.catch(() => {
+      if (prefetched.get(k) === entry) prefetched.delete(k);
+    });
+    while (prefetched.size > 8) prefetched.delete(prefetched.keys().next().value as string);
+  },
+  /** Streams for a title. Uses (and uses up) a fresh prefetch if there is one. */
+  streams: (id: string, season: number, episode: number, absIndex: number, title?: string, year?: string | null, preferred?: number) => {
+    const k = streamsKey(id, season, episode, preferred);
+    const hit = prefetched.get(k);
+    prefetched.delete(k);
+    if (hit && Date.now() - hit.at < PREFETCH_TTL_MS) {
+      // A prefetch that came back empty or failed only means MovieBox has nothing; the full search still can.
+      return hit.p.catch(() => askStreams(id, season, episode, absIndex, title, year, preferred, false));
+    }
+    return askStreams(id, season, episode, absIndex, title, year, preferred, false);
+  },
   subtitles: (id: string, resourceId: string, dubIds: string[], season: number, episode: number) =>
     invoke<Subtitle[]>("subtitles", { id, resourceId, dubIds, season, episode }),
   fetchSubtitle: (url: string) => invoke<string>("fetch_subtitle", { url }),

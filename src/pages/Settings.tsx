@@ -183,6 +183,12 @@ export function SettingsPage() {
         </Group>
 
         <Group title="Extra sources">
+          <Item
+            label="Free full movies from YouTube"
+            hint="When no other source has a film, look for it on the official YouTube channels of Goldmines, Shemaroo, Ultra, Eros and T-Series. The first time, this downloads a small helper program (yt-dlp, about 18 MB) from GitHub. Nothing about you is sent."
+          >
+            <Toggle label="Use YouTube's official film channels" checked={settings.youtubeSource} onChange={(v) => save({ youtubeSource: v })} />
+          </Item>
           <AddonsSettings />
         </Group>
 

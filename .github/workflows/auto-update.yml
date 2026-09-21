@@ -62,6 +62,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       needed: ${{ steps.plan.outputs.needed }}
+      ref: ${{ steps.plan.outputs.ref }}
       current: ${{ steps.plan.outputs.current }}
       upstream_tag: ${{ steps.plan.outputs.upstream_tag }}
       next_version: ${{ steps.plan.outputs.next_version }}
@@ -73,51 +74,7 @@ jobs:
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          newest() { printf '%s\n' "$@" | sort -V | tail -1; }
-
-          current=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' vendor/moviebox-tui/Cargo.toml | head -1)
-          upstream_tag=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)
-          upstream=${upstream_tag#v}
-          app=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
-          released=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || echo v0.0.0)
-          released=${released#v}
-          echo "vendored MovieBox-Tui: $current | upstream latest: $upstream | this checkout: MovieBox $app | last release: MovieBox $released"
-
-          needed=false
-          if [ "$upstream" != "$current" ] && [ "$(newest "$upstream" "$current")" = "$upstream" ]; then
-            needed=true
-          fi
-          if [ "$FORCE" = "true" ]; then needed=true; fi
-
-          # An earlier run already published this upstream version (its branch is the proof).
-          if [ "$needed" = true ] && [ "$FORCE" != "true" ] \
-             && git ls-remote --exit-code --heads "https://github.com/$GITHUB_REPOSITORY" "auto/vendor-$upstream_tag" >/dev/null 2>&1; then
-            echo "auto/vendor-$upstream_tag already exists, so $upstream_tag was published before. Nothing to do."
-            needed=false
-          fi
-
-          # Building from a checkout that is older than the last release would publish a downgrade.
-          if [ "$needed" = true ] && [ "$(newest "$app" "$released")" != "$app" ]; then
-            echo "::error::This checkout is MovieBox $app but $released is already released. Merge the branch that produced $released into the default branch first, or the update would ship older code."
-            exit 1
-          fi
-
-          base=$(newest "$app" "$released")
-          next=$(echo "$base" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')
-
-          {
-            echo "needed=$needed"
-            echo "current=$current"
-            echo "upstream_tag=$upstream_tag"
-            echo "next_version=$next"
-          } >> "$GITHUB_OUTPUT"
-          if [ "$needed" = true ]; then
-            echo "### Update needed: MovieBox-Tui $current → $upstream, shipping as MovieBox $next" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "### Up to date: vendoring MovieBox-Tui $current, upstream is $upstream" >> "$GITHUB_STEP_SUMMARY"
-          fi
+        run: bash scripts/auto-update-plan.sh
 
   build:
     needs: check
@@ -135,8 +92,10 @@ jobs:
       # LF everywhere, so the patch this job produces applies cleanly in the publish job.
       - run: git config --global core.autocrlf false
 
+      # The commit check chose: the default branch, or the last release if that is newer.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.check.outputs.ref }}
           persist-credentials: false
 
       - uses: actions/setup-node@v4
@@ -286,7 +245,10 @@ jobs:
           mkdir out
           cp "src-tauri/target/release/bundle/nsis/MovieBox_${NEXT}_x64-setup.exe" out/
           cp "$RUNNER_TEMP/notes.md" out/notes.md
-          git add -A -- vendor src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json \
+          # -f for the vendored tree: upstream files that happen to match one of our
+          # ignore patterns must still be committed, or the branch would not build.
+          git add -A -f -- vendor/moviebox-tui
+          git add -A -- src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json \
             README.md CLAUDE.md SETUP_GUIDE.md BUILD.md TECHNICAL.md MASTERPLAN.md CHANGELOG.md
           git diff --cached --binary > out/update.patch
           git diff --cached --stat | tail -3
@@ -320,6 +282,8 @@ jobs:
       - run: git config --global core.autocrlf false
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.ref }}
 
       - uses: actions/setup-node@v4
         with:

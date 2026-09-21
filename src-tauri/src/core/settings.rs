@@ -26,6 +26,9 @@ pub struct GuiSettings {
     pub locked_addons: Vec<String>,
     /// Whether the Adults section is shown at all. Only ever true alongside a PIN.
     pub adult_enabled: bool,
+    /// Look for a title on the official YouTube channels of film distributors when no
+    /// other source has it. Needs the yt-dlp helper, fetched the first time it is used.
+    pub youtube_source: bool,
 }
 
 impl Default for GuiSettings {
@@ -49,6 +52,7 @@ impl Default for GuiSettings {
             pin_salt: None,
             locked_addons: Vec::new(),
             adult_enabled: false,
+            youtube_source: true,
         }
     }
 }

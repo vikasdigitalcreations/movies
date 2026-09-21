@@ -49,16 +49,20 @@ Full metadata including seasons, episodes, dub languages and whether the title i
 
 ## Streams
 
-### `streams(id, season, episode, absIndex, title?, year?, preferred?) -> Stream[]`
+### `streams(id, season, episode, absIndex, title?, year?, preferred?, primaryOnly?) -> Stream[]`
 All playable releases for one movie or episode, already merged, deduplicated and ordered best-first by `core/stream_pool`. `multi: true` marks a multi-resolution DASH manifest (labelled "Auto"); `downloadable: true` means the queue can take it, which since 1.1.0 includes DASH. `headers` must be passed to mpv or the download worker unchanged.
 
-Three sources are tried in order, and the first that yields anything wins:
+Five sources, in this order of preference:
 
 1. **MovieBox.** Its "update the app" advert links are removed here (`is_notice_url`), so a healthy MovieBox title returns one DASH release.
 2. **4KHDHub**, searched by `title` + `year`. Up to four releases are resolved concurrently.
-3. **Stremio addons**, via `commands::addons::addon_streams_for`.
+3. **YouTube's official film channels**, through yt-dlp (`core/youtube.rs`). Films only; the upload must be from a listed channel, run 70+ minutes, start with the film's name and state a year that agrees. Returns 360p to 1080p streams whose `url` is an `edl://` address joining the video and audio files; `downloadable` is false. Off when Settings' `youtubeSource` is false.
+4. **Dramachi.** Films in parts come back as one `edl://` stream, not downloadable.
+5. **Stremio addons**, via `commands::addons::addon_streams_for`.
 
-`title` is what tiers 2 and 3 search by; omit it and only MovieBox is consulted. `preferred` is the quality ceiling (0 = best available). Since 1.2.0 the failover lives here rather than in the player, so downloads reach the same alternative that playback does.
+MovieBox is asked first and alone. The backup sources start if it fails or has said nothing for 5 s, and are then asked together (`core/race.rs`); the best-ranked answer wins, and a better tier is given 12 s longer when a worse one has already answered. A healthy MovieBox therefore never causes a request to the others. `primaryOnly: true` asks MovieBox and nothing else; the Details page's prefetch uses it, so merely opening a page cannot start the heavier scrapers. The frontend caches a prefetch for two minutes and uses it once (`api.prefetchStreams` / `api.streams`).
+
+`title` is what tiers 2 to 5 search by; omit it and only MovieBox is consulted. `preferred` is the quality ceiling (0 = best available). Since 1.2.0 the failover lives here rather than in the player, so downloads reach the same alternative that playback does.
 
 When every tier comes up empty the error describes the MovieBox outcome, because that is the one the user can act on — `StreamProblem::OnlyAdvert` (MovieBox has the title but serves only its advert), `NotCarried` (no source has it) or `Provider` (the request itself failed).
 
@@ -69,7 +73,7 @@ External caption tracks for a release. Language labels are sanitised for display
 Downloads one subtitle to a local file (some URLs need headers mpv cannot send) and returns the path for `sub-add`.
 
 ### `alternate_source(title, year: string | null, season, episode, preferred: number) -> Stream`
-"Try another source", used by the player when a stream fails mid-playback. Shares `fourk_streams` with `streams` and returns its first result. Searches 4KHDHub and uses a result **only** when the normalised title matches and, when a year is known, the year matches too. Otherwise it rejects with "No other source has this title." Timeouts: 15 s search, 20 s stream resolution, 18 s per mirror.
+"Try another source", used by the player when a stream fails mid-playback. Asks the same backup sources as `streams` (4KHDHub, YouTube if enabled, Dramachi, addons), together, and returns the best result's first stream. Each source applies its own title and year rule. Otherwise it rejects with "No other source has this title." Timeouts: 15 s search, 20 s stream resolution, 18 s per mirror.
 
 ## Addons (Stremio)
 
@@ -175,7 +179,9 @@ Two constraints learned the hard way:
 | 4KHDHub | Search and stream resolution, via the `greenmotors.club` mediator | Second source, on a confident title + year match | None | 15 s search / 20 s resolve. Mirrors resolve again since the v0.1.21 vendor bump; before it every one reported "dead or expired" |
 | Cinemeta | `v3-cinemeta.strem.io` — catalog search | Turns a title + year into an IMDb id so addons can be asked | None | Seeded by default; disabling it disables addons |
 | Dramachi | `api.nodeobjects.com` — search, title details, episode files | Third source: anime, K-dramas, cartoons, some films, 360p-540p direct files | None | 15 s search / 20 s streams. Films come in parts, joined into one `edl://` timeline |
-| Stremio addons | Whatever the user installs | Fourth source | Whatever that addon requires | User-chosen. Only HTTP streams are used; magnets are dropped |
+| YouTube via yt-dlp | `ytsearch20:` search and `-J` format lists for uploads from `OFFICIAL_CHANNELS`; the video and audio files come from `*.googlevideo.com` | Third source: full films, 360p-1080p | None; no cookies, no login | 40 s search / 45 s resolve per yt-dlp call; the process is killed if the caller gives up |
+| yt-dlp releases | `github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe` and `SHA2-256SUMS` | The YouTube helper, fetched on first use and refreshed at most every three days | None | The download is rejected unless it matches the published SHA-256 |
+| Stremio addons | Whatever the user installs | Last source | Whatever that addon requires | User-chosen. Only HTTP streams are used; magnets are dropped |
 | GitHub Releases | `latest.json` plus the signed installer | Auto-update | None; public repo | One GET per launch |
 
 Nothing about the user is sent to any of these: no account, no identifier, no email, no telemetry.

@@ -332,7 +332,8 @@ impl DownloadManager {
             }
         }
         let alt = crate::commands::streams::other_source_streams(&self.service, &t.title, t.year.as_deref(), t.season, t.episode, t.height).await.ok()?;
-        let s = alt.iter().find(|s| s.height == t.height).or_else(|| alt.first())?;
+        // Only single files can be downloaded; a film the player joins from parts cannot.
+        let s = alt.iter().filter(|s| s.downloadable).find(|s| s.height == t.height).or_else(|| alt.iter().find(|s| s.downloadable))?;
         Some((s.url.clone(), s.headers.clone()))
     }
 

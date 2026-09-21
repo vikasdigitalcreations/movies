@@ -111,6 +111,26 @@ The update feed must stay publicly readable — the app fetches it with no crede
 
 To bump the version, edit `version` in both `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then rebuild. The portable script reads the version from `tauri.conf.json`.
 
+## Automatic updates
+
+MovieBox changes how it hands out video every few weeks, and MovieBox-Tui ships the matching fix within hours. `.github/workflows/auto-update.yml` closes the gap: every four hours it checks for a newer upstream release and, if there is one, re-vendors it, tests it, builds it, and publishes a signed release that installed copies pick up on their next launch. Nothing is published unless the unit tests, the type check, the download check and a survey of popular titles all pass; a failure opens a GitHub issue and releases nothing.
+
+One-time setup, both parts required:
+
+1. Store the updater signing key as an **environment secret** (not a repository secret) on the `release` environment, which only the `main` branch may use:
+
+```bash
+gh secret set TAURI_UPDATER_KEY --env release --repo vikasdigitalcreations/movies < "$USERPROFILE/.tauri/moviebox_updater.key"
+```
+
+2. Merge the branch that contains the workflow into `main`. Scheduled workflows only run from the default branch. After that nothing needs merging: when `main` is older than the last release (as it is after every automatic release), the workflow builds on the last release's commit instead.
+
+Optional: turn on *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*, so each automatic release also opens a pull request that brings `main` up to date. Without it the release still goes out and its branch `auto/vendor-<tag>` is pushed; merging is only needed to keep `main` readable, not for the next update.
+
+To rehearse without publishing, push a branch named `ci-dry-run`, or run the workflow by hand (Actions → Auto-update → Run workflow) with *dry_run* left on. A rehearsal builds everything and signs with a throwaway key but publishes nothing. If GitHub's servers are ever blocked by MovieBox the survey gate fails; run by hand with *skip_gate* to publish anyway. To switch the whole thing off, delete the secret or disable the workflow.
+
+What it trusts: the upstream MovieBox-Tui release is compiled into the app that gets signed, exactly as when re-vendoring by hand, and the key is exposed only to the `publish` job, which runs no upstream code.
+
 ## Common tasks
 
 | Task | How |
