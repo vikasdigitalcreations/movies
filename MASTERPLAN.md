@@ -73,6 +73,7 @@ Video and UI are two stacked native layers: mpv draws into a child window, and t
 | F — Ship | Rebuild with the pending history-timestamp fix, retest, hand over the installer | Done (v1.0.0, 2026-09-15) |
 | G — Keep it working | Block MovieBox's "update the app" advert clips, download DASH streams with a bundled ffmpeg, auto-update from GitHub Releases | Code done and tested in the dev app; the 1.1.0 release build is next |
 | H — Keep it working without anyone | Five raced sources including YouTube's official film channels, stream prefetch, the mid-seek deadlock fix, and an auto-update workflow that re-vendors, tests and publishes each new MovieBox-Tui release | 1.3.3 built and verified in the installed app; the workflow's dry run is green but it goes live only once the updater key is stored as a GitHub secret and the branch is merged into `main` |
+| I — LiveTV | Free live channels from two public M3U lists, merged to one tile per channel with fallback links, and a player mode for live streams | Done (in 1.3.3, unpublished) |
 
 ## Key decisions
 

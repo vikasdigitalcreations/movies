@@ -7,7 +7,7 @@ Last updated: 2026-10-11
 There is no HTTP server. The app's internal interface is the **Tauri command bridge**: the React frontend calls Rust commands with `invoke(name, args)` and receives JSON, and the backend pushes updates as events.
 
 - Typed wrappers for every command: `src/lib/api.ts` (`api.home(...)`, `api.downloadAdd(...)`, ...).
-- Registration: the `invoke_handler!` list in `src-tauri/src/lib.rs` (32 commands).
+- Registration: the `invoke_handler!` list in `src-tauri/src/lib.rs` (50 commands).
 - **Argument names are camelCase** over the bridge; Rust snake_case parameters are converted automatically (`abs_index` is sent as `absIndex`).
 - **Responses are camelCase** — every DTO is `#[serde(rename_all = "camelCase")]`.
 - **Errors:** every command returns `Result<T, String>`. The rejected value is a ready-to-show sentence produced by `friendly()` in `src-tauri/src/core/types.rs` ("Can't reach the server. Please check your internet connection and try again.", "The server is busy right now...", "Sorry, this title isn't available right now."). The frontend renders it through `errText()`.

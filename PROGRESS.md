@@ -34,8 +34,8 @@ adds Hindi dubs and classic Bollywood at up to 1080p.
 
 - **Scaffold and vendoring** — Tauri 2 + React 19 + TypeScript + Vite + Tailwind 4; MovieBox-Tui vendored at `vendor/moviebox-tui` as a path dependency (v0.1.20 at first, v0.1.21 since). No `pub` edits to the vendored source were needed.
 - **Player spike** — libmpv renders inside the Tauri window with the WebView2 overlay drawing controls on top. Confirmed with a native `PrintWindow` capture of the running window.
-- **Backend** — 32 Tauri commands across catalog, streams, library, downloads and system; `download://progress` and `download://removed` events; 10-minute home cache, details cache, friendly error mapping.
-- **Frontend** — Home / Movies / Series / Anime, Search, Details, Player, Downloads, Settings, Help, My List, Continue Watching; toasts, context menus, welcome tour, offline banner, skeletons.
+- **Backend** — 50 Tauri commands across catalog, streams, addons, adults, LiveTV, library, downloads and system; `download://progress` and `download://removed` events; 10-minute home cache, details cache, friendly error mapping.
+- **Frontend** — Home / Movies / Series / Anime / LiveTV, Search, Details, Player, Downloads, Settings, Help, My List, Continue Watching; toasts, context menus, welcome tour, offline banner, skeletons.
 - **Player** — full shortcut table, speed 0.25x–8x with `scaletempo2`, subtitle and audio menus, subtitle styling, quality switch keeping position, resume prompt with 5 s rewind, Up Next countdown, sleep timer, night mode, mini player, in-player episode list, screenshots, keep-awake.
 - **Downloads** — persistent queue (`downloads.json`), resume, pause/cancel with cleanup, URL refresh on 401/403/404/410, free-space check, subtitles saved beside the video, tidy folder names, completion notification. Since 1.1.0 this also covers DASH streams (`core/dash.rs` + the bundled ffmpeg).
 - **Advert clip blocked (1.1.0)** — `core/stream_pool::is_notice_url` drops MovieBox's "update the app" links before they reach the player or the queue.
@@ -61,6 +61,7 @@ adds Hindi dubs and classic Bollywood at up to 1080p.
 - **Verification** (2026-09-20, dev app over CDP, MovieBox dark): Rust tests 14/14 and `tsc` clean; `addons_list` returns Cinemeta through real IPC; six addon guard paths (bad URL, dead host, subtitles-only addon, duplicate, removing Cinemeta, no stream addon) each fail with their own message and persist nothing; `streams` returned three 4KHDHub releases in 10.7 s; the resolved URL answered HTTP 206 as `video/x-matroska`; Details -> Play played Inception at 2160p with the clock advancing 0:25 -> 0:37 over twelve seconds.
 
 - **LiveTV (1.3.3)** — `core/livetv.rs` reads the two lists, folds duplicate entries into one channel with its addresses as fallback links, and caches the lists for six hours; `src/pages/LiveTV.tsx` has category, language and name filters; the player hides everything that needs a timeline for a live channel. 10 unit tests.
+- **Verification** (2026-10-11, dev build and installed v1.3.3 over CDP): unit tests 60/60 and `tsc` clean; `probe livetv check` 1,157 of 1,249 channels answer on the first link, 1,188 on some link; Aaj Tak, DD National, Zee News, 9XM, NDTV 24x7 and DD News played, two on their second link; DD National read 1920x1080 with the clock advancing and the engine idle after leaving; Disney Channel (dead in both lists) showed the not-answering message after 20 s; filters survived the trip to the player.
 
 ## In progress
 
@@ -75,9 +76,10 @@ adds Hindi dubs and classic Bollywood at up to 1080p.
 3. Find and document a working HTTP-streaming addon. The addon path is verified as far
    as the id bridge and every guard, but no addon that serves direct HTTP streams was
    installed, so aggregation across a live stream addon is still untested.
-4. Optional: strip `probe.exe` from the bundle (about 11 MB) -- though it is now the
+4. LiveTV extras, if wanted: favourite channels, adding another list from Settings, a programme guide.
+5. Optional: strip `probe.exe` from the bundle (about 11 MB) -- though it is now the
    diagnostic tool, so shipping it may be worth the size.
-5. Track upstream -- done by the auto-update workflow once it is switched on (item 1).
+6. Track upstream -- done by the auto-update workflow once it is switched on (item 1).
 
 ## Known issues / blockers
 
