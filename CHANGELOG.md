@@ -2,6 +2,18 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-10-11 — 1.3.3 (PIN reset and master PIN, still unpublished)
+
+### Fixed
+- **The PIN could come back after being changed or removed, or be dropped after being set.** The app kept the PIN, the addon lock list and the Adults switch in memory and wrote that copy back on every save. Whenever anything else had written `gui_settings.json` in the meantime (a second copy of the app such as the portable build, or a hand edit), the stale copy won. `core/settings::refresh_guard` now reads those four values from the file before every command that checks or saves them, so the file is the single truth. An unreadable file changes nothing rather than counting as "no PIN".
+
+### Added
+- **Forgot PIN?** in Settings -> Adults: enter the master PIN and choose a new PIN. The lock screen points to it.
+- **A master PIN.** It is accepted wherever the user's own PIN is asked for (unlocking, changing, removing), whether or not a PIN is set. Only its salted SHA-256 is in the source (`commands/system.rs`, `MASTER_DIGEST`); the number itself is written nowhere in the repository. `pin_set`, `pin_verify` and `pin_clear` keep their shapes.
+
+### Verified
+- Installed build over CDP: a wrong PIN is refused; the master PIN unlocks; changing the PIN with a wrong current PIN fails and with the master PIN succeeds, after which the old PIN no longer works; a `settings_set` carrying an empty PIN leaves the PIN and the Adults switch alone; replacing the settings file while the app runs takes effect on the next check without a restart. 61 unit tests, `tsc` clean.
+
 ## 2026-10-11 — 1.3.3 (LiveTV, still unpublished)
 
 ### Added

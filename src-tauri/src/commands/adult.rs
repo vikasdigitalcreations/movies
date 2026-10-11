@@ -21,7 +21,8 @@ fn source_from(name: &str) -> Result<Source, String> {
 
 /// The section is off unless it has been switched on *and* a PIN exists to guard it.
 async fn require_unlocked(state: &State<'_, AppState>, unlocked: bool) -> Result<(), String> {
-    let s = state.settings.read().await;
+    let mut s = state.settings.write().await;
+    crate::core::settings::refresh_guard(&mut s);
     if !s.adult_enabled {
         return Err("The Adults section is switched off in Settings.".into());
     }
@@ -77,6 +78,7 @@ pub async fn adult_playback(state: State<'_, AppState>, id: String, unlocked: bo
 #[tauri::command]
 pub async fn adult_set_enabled(state: State<'_, AppState>, enabled: bool) -> CmdResult<()> {
     let mut s = state.settings.write().await;
+    crate::core::settings::refresh_guard(&mut s);
     if enabled && s.pin_hash.is_none() {
         return Err("Set a PIN first — the section is only shown behind one.".into());
     }
@@ -90,6 +92,7 @@ pub async fn adult_set_enabled(state: State<'_, AppState>, enabled: bool) -> Cmd
 /// Whether the sidebar should show the section at all.
 #[tauri::command]
 pub async fn adult_is_enabled(state: State<'_, AppState>) -> CmdResult<bool> {
-    let s = state.settings.read().await;
+    let mut s = state.settings.write().await;
+    crate::core::settings::refresh_guard(&mut s);
     Ok(s.adult_enabled && s.pin_hash.is_some())
 }

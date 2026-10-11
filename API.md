@@ -167,6 +167,9 @@ A **DASH stream** (what MovieBox serves now) is handled by `core/dash.rs`: video
 
 `Settings` fields: `preferredQuality` (0 = best), `subtitleLanguage`, `autoplayNext`, `rememberSpeed`, `seekStep`, `downloadDir?`, `simultaneousDownloads`, `subtitleSize`, `subtitleBackground`, `volume`, `lastSpeed`, `nightMode`, `uiZoom`, `tourDone`.
 
+### PIN: `pin_is_set() -> boolean`, `pin_set(pin, current?)`, `pin_verify(pin) -> boolean`, `pin_clear(current)`
+The PIN guards the Adults section and any locked addon. `pin_set` wants at least 4 digits, and `current` once a PIN exists. `pin_verify` answers true when no PIN is set. `pin_clear` also empties the lock list and switches the Adults section off. Wherever a PIN is asked for, the master PIN is accepted as well; it is how "Forgot PIN?" works (`pin_set(new, master)`). Every one of these reads the PIN from `gui_settings.json` first, not from memory.
+
 ## Updates (plugin, not an app command)
 
 `src/components/Updater.tsx` wraps `@tauri-apps/plugin-updater`: `check()` on launch, then `downloadAndInstall(onProgress)` and `relaunch()`. The feed is `https://github.com/vikasdigitalcreations/movies/releases/latest/download/latest.json`, and an update whose signature does not match the public key in `tauri.conf.json` is refused by the plugin. Nothing identifying the machine or the person is sent — it is a plain GET of a public file.

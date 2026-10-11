@@ -70,10 +70,28 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> GuiSettings {
-    std::fs::read_to_string(path())
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    read_disk().unwrap_or_default()
+}
+
+/// The settings file as it is on disk right now, or `None` when it is missing or cannot
+/// be read -- which is not the same as "everything is at its default".
+fn read_disk() -> Option<GuiSettings> {
+    let text = std::fs::read_to_string(path()).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Take the PIN, the lock list and the Adults switch from the file, not from memory.
+/// The copy in memory goes stale whenever something else writes the file (a second copy
+/// of the app, the portable build beside the installed one, a hand edit), and saving a
+/// stale copy used to bring back a PIN that had been changed or removed, or drop one
+/// that had just been set. An unreadable file changes nothing.
+pub fn refresh_guard(s: &mut GuiSettings) {
+    if let Some(disk) = read_disk() {
+        s.pin_hash = disk.pin_hash;
+        s.pin_salt = disk.pin_salt;
+        s.locked_addons = disk.locked_addons;
+        s.adult_enabled = disk.adult_enabled;
+    }
 }
 
 pub fn save(settings: &GuiSettings) {

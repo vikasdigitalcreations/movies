@@ -23,6 +23,8 @@ A Tauri 2 Windows app wrapping the vendored MovieBox-Tui v0.1.22 crate (`vendor/
 - Addon matching is strict on normalised title and year. Loosening it plays the wrong film, which is worse than playing nothing.
 - The Adults section only exists behind a PIN: it cannot be switched on without one, and clearing the PIN switches it off. Keep that invariant -- `adult_set_enabled` and `pin_clear` both enforce it.
 - `settings_set` must never carry `pin_hash`, `pin_salt`, `locked_addons` or `adult_enabled`. Those belong to their own commands so the UI cannot wipe them and the hash stays in the backend.
+- The PIN, `locked_addons` and `adult_enabled` are read from `gui_settings.json` before every check or save (`core/settings::refresh_guard`). Call it first in any new command that touches them; trusting the copy in memory is what made the PIN come back or vanish.
+- The master PIN is accepted wherever a PIN is asked for and exists in the source only as `MASTER_DIGEST`. Never write the number itself into code, tests, docs or commit messages.
 - Adult sources are the platforms' own public APIs, never scrapers. Eporner's files answer 403 outside its embed; show the embed rather than working around it.
 - Before theorising about "it stopped playing", measure it: `cargo run --bin probe -- survey` counts playable titles, and `failover_health` / `provider_health` / `dash_health` (`cargo test --lib <name> -- --ignored`) check one path each. Providers change without warning -- MovieBox went from 15 of 17 titles playable to 0 within an hour on 2026-09-20.
 - The updater signing key lives at `%USERPROFILE%\.tauri\moviebox_updater.key` and must never be committed.

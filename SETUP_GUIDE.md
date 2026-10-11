@@ -63,7 +63,7 @@ cd src-tauri && cargo test --lib
 npx tsc --noEmit
 ```
 
-60 Rust unit tests cover the stream pool (merging, ordering, quality pick, advert-clip filtering), DASH manifest parsing, download path building and cleanup, the source racing, YouTube matching, the yt-dlp helper and the LiveTV list reading and merging. There is no automated UI test suite; the end-to-end passes were scripted ad hoc against a running build.
+61 Rust unit tests cover the stream pool (merging, ordering, quality pick, advert-clip filtering), DASH manifest parsing, download path building and cleanup, the source racing, YouTube matching, the yt-dlp helper and the LiveTV list reading and merging. There is no automated UI test suite; the end-to-end passes were scripted ad hoc against a running build.
 
 To see what LiveTV currently offers and how much of it answers (the second command contacts every channel and takes a few minutes):
 

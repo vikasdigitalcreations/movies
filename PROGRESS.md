@@ -63,6 +63,8 @@ adds Hindi dubs and classic Bollywood at up to 1080p.
 - **LiveTV (1.3.3)** — `core/livetv.rs` reads the two lists, folds duplicate entries into one channel with its addresses as fallback links, and caches the lists for six hours; `src/pages/LiveTV.tsx` has category, language and name filters; the player hides everything that needs a timeline for a live channel. 10 unit tests.
 - **Verification** (2026-10-11, dev build and installed v1.3.3 over CDP): unit tests 60/60 and `tsc` clean; `probe livetv check` 1,157 of 1,249 channels answer on the first link, 1,188 on some link; Aaj Tak, DD National, Zee News, 9XM, NDTV 24x7 and DD News played, two on their second link; DD National read 1920x1080 with the clock advancing and the engine idle after leaving; Disney Channel (dead in both lists) showed the not-answering message after 20 s; filters survived the trip to the player.
 
+- **PIN reset and master PIN (1.3.3)** — "Forgot PIN?" in Settings -> Adults; a master PIN accepted everywhere a PIN is asked for; the PIN, lock list and Adults switch are re-read from the settings file before every use, which ends the PIN reappearing or vanishing when the file was written by something else. Verified in the installed build.
+
 ## In progress
 
 - Nothing.

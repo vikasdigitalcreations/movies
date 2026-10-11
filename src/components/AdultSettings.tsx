@@ -13,7 +13,7 @@ import { useApp } from "../store/app";
 export function AdultSettings() {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [enabled, setEnabled] = useState(false);
-  const [mode, setMode] = useState<"idle" | "set" | "clear">("idle");
+  const [mode, setMode] = useState<"idle" | "set" | "clear" | "forgot">("idle");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
@@ -41,6 +41,7 @@ export function AdultSettings() {
     if (next !== again) return toast("Those two PINs don't match.", "error");
     setBusy(true);
     try {
+      // "Forgot PIN" sends the master PIN in the same place; the backend takes either.
       await api.pinSet(next, hasPin ? current : undefined);
       // An unlock granted by the old PIN must not outlive it.
       setUnlocked(false);
@@ -126,6 +127,11 @@ export function AdultSettings() {
                   Remove
                 </Button>
               )}
+              {hasPin && (
+                <Button size="sm" onClick={() => setMode("forgot")}>
+                  Forgot PIN?
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -141,6 +147,23 @@ export function AdultSettings() {
             <Button size="sm" onClick={reset}>
               Cancel
             </Button>
+          </div>
+        )}
+
+        {mode === "forgot" && (
+          <div className="mt-3">
+            <p className="mb-2 text-sm text-white/55">Enter the master PIN, then choose a new PIN of your own.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {field(current, setCurrent, "Master PIN")}
+              {field(next, setNext, "New PIN")}
+              {field(again, setAgain, "Repeat")}
+              <Button variant="primary" size="sm" onClick={savePin} disabled={busy || !current}>
+                {busy ? <Spinner size={14} /> : "Reset PIN"}
+              </Button>
+              <Button size="sm" onClick={reset}>
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
 

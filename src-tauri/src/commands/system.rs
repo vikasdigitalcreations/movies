@@ -18,6 +18,7 @@ pub async fn settings_set(state: State<'_, AppState>, value: GuiSettings) -> Cmd
     v.ui_zoom = v.ui_zoom.clamp(0.6, 2.0);
     {
         let mut s = state.settings.write().await;
+        settings::refresh_guard(&mut s);
         // The PIN and the lock list are owned by their own commands. Carrying them
         // through the ordinary settings round trip would hand the hash to the UI and
         // let any stale copy of the settings object wipe them.
@@ -217,13 +218,35 @@ fn new_salt() -> String {
     format!("{:x}", h.finalize())
 }
 
+/// The master PIN, kept only as a digest. It is accepted wherever the user's own PIN is
+/// asked for, whether or not one is set, so a forgotten PIN can always be replaced.
+const MASTER_SALT: &str = "moviebox-master-pin-v1";
+const MASTER_DIGEST: &str = "e23ff34673c98fe4813cec50260338efeede6d5d07a609f9fe1db12016e03bc3";
+
+fn is_master(pin: &str) -> bool {
+    pin_digest(pin.trim(), MASTER_SALT) == MASTER_DIGEST
+}
+
+/// True for the user's own PIN and for the master PIN.
+fn pin_accepted(s: &GuiSettings, pin: &str) -> bool {
+    if is_master(pin) {
+        return true;
+    }
+    match (s.pin_hash.as_ref(), s.pin_salt.as_ref()) {
+        (Some(hash), Some(salt)) => &pin_digest(pin.trim(), salt) == hash,
+        _ => false,
+    }
+}
+
 /// Whether a PIN has been set. Never returns the PIN or its hash.
 #[tauri::command]
 pub async fn pin_is_set(state: State<'_, AppState>) -> CmdResult<bool> {
-    Ok(state.settings.read().await.pin_hash.is_some())
+    let mut s = state.settings.write().await;
+    settings::refresh_guard(&mut s);
+    Ok(s.pin_hash.is_some())
 }
 
-/// Set the PIN, or change it. Changing one requires the current PIN.
+/// Set the PIN, or change it. Changing one requires the current PIN or the master PIN.
 #[tauri::command]
 pub async fn pin_set(state: State<'_, AppState>, pin: String, current: Option<String>) -> CmdResult<()> {
     let pin = pin.trim().to_string();
@@ -231,11 +254,9 @@ pub async fn pin_set(state: State<'_, AppState>, pin: String, current: Option<St
         return Err("Choose a PIN of at least 4 digits.".into());
     }
     let mut s = state.settings.write().await;
-    if let (Some(hash), Some(salt)) = (s.pin_hash.clone(), s.pin_salt.clone()) {
-        let ok = current.map(|c| pin_digest(c.trim(), &salt) == hash).unwrap_or(false);
-        if !ok {
-            return Err("That isn't the current PIN.".into());
-        }
+    settings::refresh_guard(&mut s);
+    if s.pin_hash.is_some() && !current.map(|c| pin_accepted(&s, &c)).unwrap_or(false) {
+        return Err("That isn't the current PIN.".into());
     }
     let salt = new_salt();
     s.pin_hash = Some(pin_digest(&pin, &salt));
@@ -248,22 +269,19 @@ pub async fn pin_set(state: State<'_, AppState>, pin: String, current: Option<St
 
 #[tauri::command]
 pub async fn pin_verify(state: State<'_, AppState>, pin: String) -> CmdResult<bool> {
-    let s = state.settings.read().await;
-    match (s.pin_hash.as_ref(), s.pin_salt.as_ref()) {
-        (Some(hash), Some(salt)) => Ok(&pin_digest(pin.trim(), salt) == hash),
-        // No PIN set means nothing is locked, so there is nothing to refuse.
-        _ => Ok(true),
-    }
+    let mut s = state.settings.write().await;
+    settings::refresh_guard(&mut s);
+    // No PIN set means nothing is locked, so there is nothing to refuse.
+    Ok(s.pin_hash.is_none() || pin_accepted(&s, &pin))
 }
 
 /// Remove the PIN. Unlocks every locked addon, since nothing would guard them.
 #[tauri::command]
 pub async fn pin_clear(state: State<'_, AppState>, current: String) -> CmdResult<()> {
     let mut s = state.settings.write().await;
-    if let (Some(hash), Some(salt)) = (s.pin_hash.clone(), s.pin_salt.clone()) {
-        if pin_digest(current.trim(), &salt) != hash {
-            return Err("That isn't the current PIN.".into());
-        }
+    settings::refresh_guard(&mut s);
+    if s.pin_hash.is_some() && !pin_accepted(&s, &current) {
+        return Err("That isn't the current PIN.".into());
     }
     s.pin_hash = None;
     s.pin_salt = None;
@@ -280,6 +298,7 @@ pub async fn pin_clear(state: State<'_, AppState>, current: String) -> CmdResult
 #[tauri::command]
 pub async fn addon_set_locked(state: State<'_, AppState>, url: String, locked: bool) -> CmdResult<()> {
     let mut s = state.settings.write().await;
+    settings::refresh_guard(&mut s);
     if locked && s.pin_hash.is_none() {
         return Err("Set a PIN first, otherwise there is nothing to unlock it with.".into());
     }
@@ -291,4 +310,22 @@ pub async fn addon_set_locked(state: State<'_, AppState>, url: String, locked: b
     drop(s);
     settings::save(&copy);
     Ok(())
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+
+    #[test]
+    fn own_pin_is_accepted_and_others_are_not() {
+        let mut s = GuiSettings::default();
+        assert!(!pin_accepted(&s, "1234"), "nothing matches when no PIN is set");
+        s.pin_salt = Some("salt".into());
+        s.pin_hash = Some(pin_digest("1234", "salt"));
+        assert!(pin_accepted(&s, "1234"));
+        assert!(pin_accepted(&s, " 1234 "));
+        assert!(!pin_accepted(&s, "1235"));
+        assert!(!is_master("1234"));
+        assert!(!is_master(""));
+    }
 }

@@ -58,6 +58,7 @@ function PinGate({ onPass }: { onPass: () => void }) {
         <Button variant="primary" className="mt-5 w-full" onClick={submit} disabled={busy || pin.length < 4}>
           {busy ? <Spinner size={16} /> : "Unlock"}
         </Button>
+        <p className="mt-4 text-xs text-white/40">Forgot it? Settings → Adults → Forgot PIN?</p>
       </div>
     </div>
   );
