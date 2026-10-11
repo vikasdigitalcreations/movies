@@ -13,6 +13,7 @@ const FAQ: [string, string][] = [
   ["Where are my downloads saved?", "In your Downloads folder, inside a MovieBox folder. You can change this in Settings."],
   ["How do I turn subtitles on or off?", "While watching, click the speech-bubble icon or press C. Choose your usual language in Settings."],
   ["Can I change the audio language?", "On a title's page, use the Audio language menu (when other languages exist). In the player, press A to switch audio tracks."],
+  ["Why won't a LiveTV channel play?", "LiveTV channels come from free public lists kept by volunteers, and some are off air at any moment. MovieBox tries every link a channel has. If none answers, pick another channel or try again later. Refresh on the LiveTV page downloads the newest list."],
   ["The picture has black bars.", "Press W in the player to switch between Fit, Fill and Stretch."],
   ["Does MovieBox track me?", "No. There are no accounts and no tracking. Your history and lists stay on this PC."],
 ];

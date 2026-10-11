@@ -90,6 +90,29 @@ export interface Stream {
   source: string;
 }
 
+export interface LiveChannel {
+  /** Stable across refreshes. */
+  id: string;
+  name: string;
+  logo?: string | null;
+  category: string;
+  language?: string | null;
+  /** Best picture height any of its links claims; 0 when none says. */
+  height: number;
+  /** The channel's links, best first. Never empty. */
+  streams: Stream[];
+}
+
+export interface LiveGuide {
+  channels: LiveChannel[];
+  categories: string[];
+  languages: string[];
+  /** Unix seconds: when the lists were last downloaded. */
+  updated: number;
+  /** A list could not be downloaded, so an older saved copy stood in. */
+  stale: boolean;
+}
+
 export interface Subtitle {
   name: string;
   url: string;
@@ -226,6 +249,10 @@ export const api = {
   adultSearch: (source: AdultSource, query: string, page: number, unlocked: boolean) =>
     invoke<Card[]>("adult_search", { source, query, page, unlocked }),
   adultPlayback: (id: string, unlocked: boolean) => invoke<AdultPlayback>("adult_playback", { id, unlocked }),
+
+  // --- LiveTV
+  /** Every channel, merged from the public lists. `refresh` downloads the lists again. */
+  liveChannels: (refresh = false) => invoke<LiveGuide>("live_channels", { refresh }),
 
   // --- Addon catalogues
   addonCatalogs: (unlocked: boolean) => invoke<AddonCatalog[]>("addon_catalogs", { unlocked }),

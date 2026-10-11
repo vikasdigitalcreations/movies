@@ -1,6 +1,6 @@
 # API — MovieBox
 
-Last updated: 2026-09-21
+Last updated: 2026-10-11
 
 ## Overview
 
@@ -74,6 +74,16 @@ Downloads one subtitle to a local file (some URLs need headers mpv cannot send) 
 
 ### `alternate_source(title, year: string | null, season, episode, preferred: number) -> Stream`
 "Try another source", used by the player when a stream fails mid-playback. Asks the same backup sources as `streams` (4KHDHub, YouTube if enabled, Dramachi, addons), together, and returns the best result's first stream. Each source applies its own title and year rule. Otherwise it rejects with "No other source has this title." Timeouts: 15 s search, 20 s stream resolution, 18 s per mirror.
+
+## LiveTV
+
+```
+LiveChannel { id, name, logo?, category, language?, height, streams: Stream[] }
+LiveGuide   { channels: LiveChannel[], categories: string[], languages: string[], updated, stale }
+```
+
+### `live_channels(refresh?: boolean) -> LiveGuide`
+Every channel, merged from the two public lists and sorted by name. `streams` are the channel's links in the order to try them, never empty; each carries a `User-Agent` header (the list's own, else a browser's) and a `Referer` when the list names one. `categories` is a fixed order of News, Entertainment, Movies, Music, Sports, Kids, Religious, Documentary, Lifestyle, Education, Business, Other, minus any that are empty; `languages` is by channel count with "International" last. `updated` is Unix seconds for the oldest list in use, and `stale` is true when a list could not be downloaded and a saved copy (or nothing) stood in. Answered from memory until the lists are six hours old; `refresh: true` downloads them again. Fails only when no list can be had at all.
 
 ## Addons (Stremio)
 
@@ -179,6 +189,7 @@ Two constraints learned the hard way:
 | 4KHDHub | Search and stream resolution, via the `greenmotors.club` mediator | Second source, on a confident title + year match | None | 15 s search / 20 s resolve. Mirrors resolve again since the v0.1.21 vendor bump; before it every one reported "dead or expired" |
 | Cinemeta | `v3-cinemeta.strem.io` — catalog search | Turns a title + year into an IMDb id so addons can be asked | None | Seeded by default; disabling it disables addons |
 | Dramachi | `api.nodeobjects.com` — search, title details, episode files | Third source: anime, K-dramas, cartoons, some films, 360p-540p direct files | None | 15 s search / 20 s streams. Films come in parts, joined into one `edl://` timeline |
+| Public M3U lists | `iptv-org.github.io/iptv/countries/in.m3u`, `raw.githubusercontent.com/akumar36/freeiptv/refs/heads/main/india.m3u` | LiveTV channel lists, fetched at most every six hours | None. A plain `MovieBox` user agent |
 | YouTube via yt-dlp | `ytsearch20:` search and `-J` format lists for uploads from `OFFICIAL_CHANNELS`; the video and audio files come from `*.googlevideo.com` | Third source: full films, 360p-1080p | None; no cookies, no login | 40 s search / 45 s resolve per yt-dlp call; the process is killed if the caller gives up |
 | yt-dlp releases | `github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe` and `SHA2-256SUMS` | The YouTube helper, fetched on first use and refreshed at most every three days | None | The download is rejected unless it matches the published SHA-256 |
 | Stremio addons | Whatever the user installs | Last source | Whatever that addon requires | User-chosen. Only HTTP streams are used; magnets are dropped |

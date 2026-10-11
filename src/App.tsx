@@ -12,6 +12,7 @@ import { PlayerPage } from "./pages/Player";
 import { DownloadsPage } from "./pages/Downloads";
 import { SettingsPage } from "./pages/Settings";
 import { AdultsPage } from "./pages/Adults";
+import { LiveTVPage } from "./pages/LiveTV";
 import { HelpPage } from "./pages/Help";
 import { ContinuePage, MyListPage } from "./pages/Library";
 import { useApp } from "./store/app";
@@ -123,6 +124,7 @@ function Shell() {
             <Route path="/movies" element={<HomePage key="movies" tab="2" title="Movies" />} />
             <Route path="/series" element={<HomePage key="series" tab="5" title="Series" />} />
             <Route path="/anime" element={<HomePage key="anime" tab="8" title="Anime" />} />
+            <Route path="/live" element={<LiveTVPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/title/:id" element={<DetailsPage />} />
             <Route path="/mylist" element={<MyListPage />} />

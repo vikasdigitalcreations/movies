@@ -7,6 +7,7 @@ Built around the open-source terminal app [MovieBox-Tui](https://github.com/mesa
 ## What it does
 
 - Browse a Netflix-style home screen (hero banner plus rows of posters), Movies, Series and Anime tabs.
+- Watch free live TV: 1,249 channels, mostly Indian, from public lists, with category and language filters.
 - Search with live suggestions and an All/Movies/Series filter.
 - Open a title for its description, rating, cast, genres, seasons, episodes and audio languages (dubs).
 - Play in a built-in player that renders inside the app window (mpv engine, bundled).
@@ -20,6 +21,7 @@ Built around the open-source terminal app [MovieBox-Tui](https://github.com/mesa
 |---|---|
 | Player | Auto-hiding controls, 0.25x–8x pitch-corrected speed, subtitle and audio menus, quality switch keeping position, Up Next countdown, sleep timer, night mode (volume normalisation), mini player, in-player episode list, screenshots, full shortcut table (`?`) |
 | Streaming | Five sources in order of preference -- MovieBox, then 4KHDHub on a confident title + year match, then free full films from the official YouTube channels of Goldmines, Shemaroo, Ultra, Eros and T-Series, then Dramachi (anime, K-dramas and cartoons, low quality), then any Stremio addons you add -- so one provider going dark does not stop playback. The backups are asked together, and Play starts from a stream looked up while you were still reading the page. Picks the best quality at or below the preferred one, large read-ahead buffer for weak connections, "Switch to 720p?" after repeated stalls. MovieBox's "update the app" advert clips are recognised and never played |
+| LiveTV | Channels from iptv-org's India list and akumar36/freeiptv, merged so each channel appears once with its other addresses as fallback links. Category chips, language filter, name search. A dead link moves on to the next after 20 seconds |
 | Extra sources | Settings -> Extra sources installs a Stremio addon from its link, turns it off, or removes it. Only directly playable streams are used; magnet and torrent links are dropped |
 | Downloads | Resumable downloads of both direct files and DASH streams (segments fetched, then joined by the bundled ffmpeg), pause/resume/cancel, 2 at a time (configurable), free-space check before a season, subtitles saved next to the video, tidy `Show\Season 01\` names, Windows notification on finish |
 | Updates | Checks the GitHub release feed on every launch, then downloads, installs and restarts. Manual check in Settings → About |

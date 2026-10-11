@@ -13,6 +13,10 @@ export interface Session {
   localPath?: string;
   /** play this exact stream, for sources that resolve outside the usual providers */
   directStream?: Stream;
+  /** more links to the same thing, tried in order when `directStream` fails */
+  alternates?: Stream[];
+  /** a live channel: nothing to skip through, resume or remember */
+  live?: boolean;
   qualityOverride?: number | null;
 }
 

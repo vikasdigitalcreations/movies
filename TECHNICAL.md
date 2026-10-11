@@ -1,6 +1,6 @@
 # Technical — MovieBox
 
-Last updated: 2026-09-21
+Last updated: 2026-10-11
 
 ## Stack summary
 
@@ -96,6 +96,7 @@ Release profile: `codegen-units = 1`, `lto = "thin"`, `opt-level = 3`, `panic = 
 | MovieBox CDN (`*.hakunaymatata.com` and peers) | DASH manifests and their video/audio segments | Per-stream `Referer`, `User-Agent` and `Cookie` headers returned with the play info |
 | 4KHDHub | Second source, reached through the `greenmotors.club` mediator | None |
 | Cinemeta (`v3-cinemeta.strem.io`) | Turns a title and year into an IMDb id so addons can be asked | None |
+| Public M3U channel lists | LiveTV: `iptv-org.github.io/iptv/countries/in.m3u` and `raw.githubusercontent.com/akumar36/freeiptv/refs/heads/main/india.m3u`, then whatever hosts the channels they name stream from | None |
 | YouTube, through yt-dlp | Third source: full films from a fixed list of verified distributor channels (`OFFICIAL_CHANNELS`) | None |
 | yt-dlp releases (`github.com/yt-dlp/yt-dlp/releases/latest/download`) | The `yt-dlp.exe` helper and its `SHA2-256SUMS`, fetched on first use and refreshed at most every three days | None; the download is checked against the published SHA-256 |
 | Stremio addons | Last source, whatever the user installs | Whatever that addon requires |
@@ -145,9 +146,11 @@ MovieBoxApp/
       streams.rs                streams, subtitles, fetch_subtitle, alternate_source
       library.rs                history_* and favorites_* commands
       downloads.rs              download_* commands (thin wrappers over the manager)
+      livetv.rs                 live_channels
       system.rs                 settings, system info, free space, folders, logs, cache, keep-awake, online check
     src/core/
       stream_pool.rs            Merge/dedupe/order releases, quality pick, advert-clip filter (unit-tested)
+      livetv.rs                 LiveTV: M3U parsing, folding duplicate entries into channels, list caching (unit-tested)
       race.rs                   pick_best and hedged: how the backup sources are asked together (unit-tested)
       youtube.rs                YouTube source: official-channel list, title and year matching, format-to-stream building (unit-tested)
       ytdlp.rs                  Fetches, verifies and runs the yt-dlp helper (unit-tested)
@@ -176,6 +179,8 @@ MovieBoxApp/
 
 **Playing:** opening Details starts `api.prefetchStreams` for the episode the main button will play (MovieBox only, kept two minutes, used once). Pressing Play → `Player.tsx` asks for the streams *while* it starts the video engine, so the two waits overlap. `streams` asks MovieBox first. If MovieBox fails, or says nothing for 5 s, the backup sources start looking and are then asked together (`core/race.rs`: `hedged` for MovieBox-then-backups, `pick_best` among the backups). The order of preference is MovieBox, then 4KHDHub matched on title and year, then YouTube's official film channels, then Dramachi on the same exact-title rule, then the user's Stremio addons (matched through Cinemeta to an IMDb id); a better tier gets 12 s longer when a worse one has already answered. MovieBox's real stream is a DASH manifest whose address is base64-encoded inside the `Edge-Cache-Cookie` it returns as `signCookie`; the same cookie goes to mpv as a header. Dramachi films arrive in parts and are joined into one mpv `edl://` timeline; YouTube films arrive as a video file and an audio file and are joined the same way with `!new_stream`. Both are marked not downloadable. The failover lives in the command rather than the player so downloads share it. MovieBox releases then go through `stream_pool`, which merges mirrors, drops duplicates and orders best-first → the page picks the best at or below the preferred quality → `Player.tsx` calls `playerInit`, then loads the URL with its headers → mpv renders into the child window while React draws the controls above it. Anything that ends the current file (leaving the player, switching quality or episode) goes through `lib/player.ts`, which pauses and waits for mpv to finish any seek first, because libmpv deadlocks if a file is torn down mid-seek. Progress is written through `history_progress` every 10 s and on exit; at 90% or more the title is marked watched.
 
+**LiveTV:** `LiveTV.tsx` → `live_channels` → `core/livetv::guide`. Each list is taken from `%APPDATA%\MovieBox\livetv\<name>.m3u` when that copy is under six hours old, otherwise downloaded (15 MB cap, must contain `#EXTINF`), otherwise the old copy is used and the guide is marked stale. `parse` reads `#EXTINF` attributes (`tvg-logo`, `group-title`, `tvg-language`, `http-user-agent`, `http-referrer`), `#EXTVLCOPT` lines and Kodi's `url|Header=value` form, and skips entries with a `#KODIPROP` licence. `build` walks the lists in trust order: `read_title` takes "(1080p)", "[Geo-blocked]", "[Not 24/7]", "(India)" and a trailing HD/SD off the name, `channel_key` reduces it to letters and digits, and entries sharing a key become one `LiveChannel` whose `streams` are its distinct addresses, ordered unblocked first, then full-time, then by claimed height, at most five. An address already seen adds no link and no channel but still fills in a missing language, logo or exact category. The page filters client-side and draws 120 tiles at a time. Pressing a tile starts a `Session` with `live: true`, `directStream` the first link and `alternates` the rest; `Player.tsx` then loads with `start=none`, gives each link 20 s, reconnects a channel that stops up to three times, and skips history, resume, the seek bar, speed and "Try another source".
+
 **YouTube source:** `youtube_streams` → `core/youtube::find` → `core/ytdlp::run`. yt-dlp is not shipped. `ytdlp::ensure` downloads `yt-dlp.exe` from yt-dlp's GitHub releases on first use, verifies it against the `SHA2-256SUMS` that release publishes, and keeps it in `%LOCALAPPDATA%\MovieBox\tools`; at most every three days it compares the published checksum with the local file and replaces it if newer. `find` runs `yt-dlp ytsearch20:<title> full movie --flat-playlist -j`, keeps only uploads from `OFFICIAL_CHANNELS` (matched by channel id) that run 70 minutes or more, whose title starts with the film's name and states a year that agrees, then runs `yt-dlp -J` on the winner and builds one stream per quality from 360p to 1080p (h264 preferred). The process is started without a window and killed if the caller stops waiting.
 
 **Downloading:** `DownloadDialog` → `download_add` → `DownloadManager` builds the destination path, checks free space, persists the task to `downloads.json`, then a worker takes one of two paths. A direct file goes through the vendored resumable `download::download()` with the MovieBox user agent; partial files are `<dest>.part`, `<dest>.part.json` and `<dest>.part.N`, and a 401/403/404/410 triggers a fresh URL fetch and a retry. A DASH stream goes through `core/dash.rs`: the manifest is parsed, the chosen video and audio segments are appended to `<dest>.part.video` and `<dest>.part.audio` with the segment counts kept in `<dest>.part.json` (so pause and resume continue rather than restart), and the bundled ffmpeg copies both into the final file. Progress is emitted as `download://progress` on every tick, removal as `download://removed`. On completion the subtitle is saved beside the video and a Windows notification fires.
@@ -192,6 +197,7 @@ The app needs **no environment variables**. Everything is stored in files.
 |---|---|
 | `%APPDATA%\MovieBox\gui_settings.json` | GUI settings (quality, subtitle language and size, autoplay, seek step, download dir, volume, zoom, tour done) |
 | `%APPDATA%\MovieBox\downloads.json` | Download queue, so it survives restarts |
+| `%APPDATA%\MovieBox\livetv\*.m3u` | The LiveTV channel lists as last downloaded; reused for six hours and kept as the fallback when a download fails |
 | `%LOCALAPPDATA%\MovieBox\tools\yt-dlp.exe` (and `yt-dlp.checked`) | The YouTube helper, fetched on first use; the marker's age says when it was last compared with the published release |
 | `%APPDATA%\moviebox-tui\history.json` | Watch history and resume points, shared with the terminal app |
 | `%APPDATA%\moviebox-tui\favorites.json` | My List, shared with the terminal app |
@@ -220,6 +226,8 @@ No secrets, keys or tokens exist in this project.
 | `src-tauri/src/commands/catalog.rs` | Homepage JSON walking (group types, subject detection), search, suggest and details with caching |
 | `src-tauri/src/commands/streams.rs` | Stream collection per episode, the raced five-tier failover and its `StreamProblem` reasons, subtitle listing and fetching, the confident-match-only 4KHDHub, YouTube and Dramachi resolution |
 | `src-tauri/src/core/race.rs` | `pick_best` (all tiers at once, best rank wins, grace for a better tier) and `hedged` (backups start when the primary is slow or fails) |
+| `src-tauri/src/core/livetv.rs` | `SOURCES`, `parse`, `read_title`, `channel_key`, `read_group`, `build`, `guide` (cached, six-hour refresh, stale fallback), `forget` |
+| `src/pages/LiveTV.tsx` | The LiveTV page: filters kept in a module-level object so they survive the player, incremental tile rendering |
 | `src-tauri/src/core/youtube.rs` | `OFFICIAL_CHANNELS`, `title_matches`, `year_agrees`, `is_wanted`, `build_streams`, `edl_pair`, `find` |
 | `src-tauri/src/core/ytdlp.rs` | `ensure` (fetch, verify, refresh), `run` (no window, killed on drop), `published_hash` |
 | `src-tauri/src/commands/addons.rs` | Stremio addon install/remove/toggle, the Cinemeta id bridge, and stream aggregation across enabled addons |

@@ -1,6 +1,6 @@
 # Masterplan — MovieBox
 
-Last updated: 2026-09-21
+Last updated: 2026-10-11
 
 ## Vision / problem solved
 
@@ -18,7 +18,7 @@ MovieBox keeps all of that app's working logic and replaces the terminal with a 
 
 ## Non-goals
 
-- Live TV, BDIX and Addons from the upstream TUI — deliberately not exposed.
+- BDIX from the upstream TUI — deliberately not exposed. (Addons arrived in 1.2.0 and Live TV in 1.3.3, both asked for.)
 - Accounts, sync, telemetry or analytics of any kind.
 - macOS and Linux builds. Windows 10/11 x64 only.
 - Code signing (a certificate costs money), so a one-time SmartScreen prompt is expected and documented instead of hidden.
@@ -95,5 +95,7 @@ Video and UI are two stacked native layers: mpv draws into a child window, and t
 | Official YouTube channels as a source, not any upload | Distributors post complete films on their own channels, which is free and legal to watch; anyone else's upload of the same film is not. Matched by channel id, never by name | 2026-09-21 |
 | Require an agreeing year for YouTube matches | Name-only matching played *Don Seenu* for Don (1978) and the 2013 remake for Zanjeer (1973) in a 28-title trial. A missed film is better than the wrong one | 2026-09-21 |
 | Fetch yt-dlp on demand instead of bundling it | YouTube changes faster than app releases; a bundled copy would go stale in weeks. Each download is checked against the SHA-256 its release publishes | 2026-09-21 |
+| LiveTV: one tile per channel, duplicates become fallback links | Two public lists gave 1,948 entries for 1,249 channels. Showing every entry would be clutter; dropping the repeats would throw away the only defence against a dead link, which some share of any free list always is. Folding them keeps both |
+| LiveTV: only `http(s)` addresses and two headers from a list | A list is a stranger's text that ends up in the video engine. Anything but a web address is dropped, and only a user agent and a referer are carried over |
 | Race the backup sources, keep their rank | One-after-another cost the sum of every failure (13 s for Parasite). Racing keeps the order of preference, with a 12 s grace so a 4K result is not lost to a 540p one that answered first | 2026-09-21 |
 | Automatic releases on GitHub, key only in the publish job | The MovieBox fix sat upstream for a day before anyone rebuilt. The job that compiles upstream code holds no secret; only the publish job, limited to `main`, can sign | 2026-09-21 |

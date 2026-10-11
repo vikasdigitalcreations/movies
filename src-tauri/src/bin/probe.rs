@@ -450,6 +450,79 @@ both {both}, only MovieBox {only_mb}, ONLY YouTube {only_yt}, neither {neither}"
                 Err(e) => println!("addon streams: {e}"),
             }
         }
+        // The LiveTV guide: what the lists merge into, and with `check` how much of it
+        // answers. `probe livetv`, `probe livetv check [how many] [user agent]`.
+        // A third argument of `fresh` anywhere downloads the lists again first.
+        "livetv" => {
+            let guide = match moviebox_lib::core::livetv::guide(args.iter().any(|a| a == "fresh")).await {
+                Ok(g) => g,
+                Err(e) => {
+                    println!("LIVETV error: {e}");
+                    return;
+                }
+            };
+            let links: usize = guide.channels.iter().map(|c| c.streams.len()).sum();
+            let spare = guide.channels.iter().filter(|c| c.streams.len() > 1).count();
+            println!("LIVETV channels={} links={} with_spare_link={} stale={}", guide.channels.len(), links, spare, guide.stale);
+            for cat in &guide.categories {
+                println!("   {cat:<14} {}", guide.channels.iter().filter(|c| &c.category == cat).count());
+            }
+            for lang in &guide.languages {
+                println!("   lang {lang:<14} {}", guide.channels.iter().filter(|c| c.language.as_ref() == Some(lang)).count());
+            }
+            println!("   lang (none)         {}", guide.channels.iter().filter(|c| c.language.is_none()).count());
+            // `probe livetv dump`: one line per channel, to eyeball what was merged.
+            if args.get(2).map(String::as_str) == Some("dump") {
+                for c in &guide.channels {
+                    let hosts: Vec<&str> = c.streams.iter().map(|s| s.url.split('/').nth(2).unwrap_or("")).collect();
+                    println!("{} | {} | {} | {}p | {}", c.name, c.category, c.language.as_deref().unwrap_or("-"), c.height, hosts.join(" , "));
+                }
+            }
+            if args.get(2).map(String::as_str) == Some("check") {
+                use futures::StreamExt;
+                let want: usize = args.get(3).and_then(|n| n.parse().ok()).unwrap_or(guide.channels.len()).max(1);
+                let ua = args.get(4).cloned().filter(|a| a != "fresh");
+                let step = (guide.channels.len() / want).max(1);
+                let sample: Vec<_> = guide.channels.iter().step_by(step).cloned().collect();
+                let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(8)).timeout(std::time::Duration::from_secs(12)).build().unwrap();
+                // Answers like something a player can open: a playlist or media, not a web page.
+                async fn answers(client: &reqwest::Client, s: &moviebox_lib::core::types::StreamDto, ua: Option<&str>) -> bool {
+                    let mut req = client.get(&s.url);
+                    for (k, v) in &s.headers {
+                        let v = if k.eq_ignore_ascii_case("user-agent") { ua.unwrap_or(v) } else { v };
+                        req = req.header(k, v);
+                    }
+                    let Ok(mut resp) = req.send().await else { return false };
+                    if !resp.status().is_success() {
+                        return false;
+                    }
+                    let kind = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
+                    if kind.contains("mpegurl") || kind.starts_with("video/") || kind.starts_with("audio/") || kind.contains("dash+xml") || kind.contains("octet-stream") {
+                        return true;
+                    }
+                    matches!(resp.chunk().await, Ok(Some(b)) if String::from_utf8_lossy(&b).trim_start().starts_with("#EXTM3U"))
+                }
+                let results: Vec<(String, Option<usize>)> = futures::stream::iter(sample.into_iter().map(|c| {
+                    let (client, ua) = (client.clone(), ua.clone());
+                    async move {
+                        for (i, s) in c.streams.iter().enumerate() {
+                            if answers(&client, s, ua.as_deref()).await {
+                                return (c.name, Some(i));
+                            }
+                        }
+                        (c.name, None)
+                    }
+                }))
+                .buffer_unordered(24)
+                .collect()
+                .await;
+                let first = results.iter().filter(|r| r.1 == Some(0)).count();
+                let any = results.iter().filter(|r| r.1.is_some()).count();
+                println!("LIVETV checked={} first_link_answers={} any_link_answers={} ua={}", results.len(), first, any, ua.as_deref().unwrap_or("(as listed)"));
+                let dead: Vec<&str> = results.iter().filter(|r| r.1.is_none()).map(|r| r.0.as_str()).take(25).collect();
+                println!("   no answer: {}", dead.join(", "));
+            }
+        }
         _ => {}
     }
 }

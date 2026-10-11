@@ -150,6 +150,12 @@ export function PlayerPage() {
   const next = session && isSeries ? neighbor(session.seasons, ref!.season, ref!.episode, 1) : null;
   const prev = session && isSeries ? neighbor(session.seasons, ref!.season, ref!.episode, -1) : null;
   const pref = session?.qualityOverride ?? settings?.preferredQuality ?? 0;
+  // A live channel: nothing to skip through, resume, remember or speed up.
+  const isLive = !!session?.live;
+  const liveRef = useRef(isLive);
+  liveRef.current = isLive;
+  // How often this channel has been reconnected after dropping out.
+  const reconnects = useRef(0);
 
   const flash = useCallback((text: string) => {
     setOsd(text);
@@ -283,30 +289,40 @@ export function PlayerPage() {
       setCurrent(s);
       setPhase("loading");
       try {
-        await load(s.url, s.headers, startPos);
+        await load(s.url, s.headers, startPos, liveRef.current);
         if (settings?.rememberSpeed && settings.lastSpeed && settings.lastSpeed !== 1) mpv.set("speed", settings.lastSpeed).catch(() => {});
       } catch (e) {
         if (token === attempt.current.token) failRef.current(errText(e));
       }
+      // A film is worth a minute's patience. A dead channel is common, and has more links
+      // or more channels behind it, so it gets less.
       window.setTimeout(() => {
         if (alive.current && token === attempt.current.token && !attempt.current.started) failRef.current("timeout");
-      }, 60000);
+      }, liveRef.current ? 20000 : 60000);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settings],
   );
 
-  const handleFailure = async (_why?: string) => {
+  const handleFailure = async (why?: string) => {
     if (!session || !alive.current) return;
     const a = attempt.current;
     const at = live.current.pos > 1 ? live.current.pos : resumeAtRef.current;
     const list = streamsRef.current;
+    // A channel that was playing and stopped has usually only dropped its connection.
+    if (session.live && why === "ended" && reconnects.current < 3) {
+      reconnects.current += 1;
+      toast("The channel dropped out. Reconnecting…");
+      startStream(list, a.index, 0);
+      return;
+    }
     if (a.index + 1 < list.length) {
-      toast("This source isn't working, trying another…");
+      toast(session.live ? "That link isn't answering, trying this channel's next one…" : "This source isn't working, trying another…");
       startStream(list, a.index + 1, at);
       return;
     }
-    if (!a.triedAlt && !session.localPath) {
+    // The other sources are searched by film title; a channel's name must never go to them.
+    if (!a.triedAlt && !session.localPath && !session.live) {
       a.triedAlt = true;
       toast("Trying another source…");
       try {
@@ -320,7 +336,13 @@ export function PlayerPage() {
         /* fall through */
       }
     }
-    setErrorMsg(session.localPath ? "This downloaded file can't be played. It may have been moved or deleted." : "Sorry, this video isn't working right now. Please try again in a little while.");
+    setErrorMsg(
+      session.localPath
+        ? "This downloaded file can't be played. It may have been moved or deleted."
+        : session.live
+          ? "This channel isn't answering right now. Free live channels come and go, so try another one or come back later."
+          : "Sorry, this video isn't working right now. Please try again in a little while.",
+    );
     setPhase("error");
   };
 
@@ -334,8 +356,10 @@ export function PlayerPage() {
       await mpv.set("sub-border-style", settings?.subtitleBackground ? "background-box" : "outline-and-shadow").catch(() => {});
       await mpv.set("sub-back-color", settings?.subtitleBackground ? "#99000000" : "#00000000").catch(() => {});
       await mpv.set("af", night ? "lavfi=[loudnorm=I=-16:LRA=11:TP=-1.5]" : "").catch(() => {});
-      api.historyStart(session.ref, startPos).catch(() => {});
-      startStream(list, pickIndex(list, session.localPath ? 0 : pref), startPos);
+      // A channel is not something to continue watching later, and its links are already
+      // in the order to try them, so the quality preference does not reorder them.
+      if (!session.live) api.historyStart(session.ref, startPos).catch(() => {});
+      startStream(list, pickIndex(list, session.localPath || session.live ? 0 : pref), startPos);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, settings, night, pref, startStream],
@@ -354,6 +378,7 @@ export function PlayerPage() {
       setPos(0);
       setDuration(0);
       attempt.current = { index: 0, triedAlt: false, started: false, token: attempt.current.token + 1 };
+      reconnects.current = 0;
       const r = session.ref;
       // Looking for the stream and starting the video engine are independent and each takes
       // a second or so, so they run together. The catch only keeps a failure that lands
@@ -373,7 +398,7 @@ export function PlayerPage() {
       if (session.localPath) {
         list = [{ label: "Downloaded", height: 0, multi: false, url: session.localPath, headers: [], downloadable: false, source: "This PC" }];
       } else if (session.directStream) {
-        list = [session.directStream];
+        list = [session.directStream, ...(session.alternates ?? [])];
       } else {
         try {
           list = await looking!;
@@ -455,7 +480,7 @@ export function PlayerPage() {
 
   // ---- progress saving ---------------------------------------------------
   const save = useCallback(async () => {
-    if (!session) return;
+    if (!session || session.live) return;
     const { pos: p, duration: d } = live.current;
     if (p < 5) return;
     try {
@@ -489,6 +514,11 @@ export function PlayerPage() {
   function onEnded() {
     if (endedToken.current === attempt.current.token) return;
     endedToken.current = attempt.current.token;
+    // A live channel has no end; reaching one means it stopped sending.
+    if (liveRef.current) {
+      failRef.current("ended");
+      return;
+    }
     const L = live.current;
     if (sleepRef.current?.kind === "episode") {
       mpv.set("pause", true).catch(() => {});
@@ -716,11 +746,16 @@ export function PlayerPage() {
     const k = e.key;
     const lower = k.length === 1 ? k.toLowerCase() : k;
     let handled = true;
+    // Skipping, speed and episodes mean nothing on a live channel.
+    const filmOnly =
+      k === "ArrowLeft" || k === "ArrowRight" || k === "Home" || k === "End" || k === "," || k === "." || k === "[" || k === "]" || k === "Backspace" ||
+      (/^[0-9]$/.test(k) && !e.ctrlKey && !e.altKey) || ((lower === "n" || lower === "p" || lower === "e") && !e.ctrlKey);
     if (phase === "resume") {
       if (k === "Enter") chooseResume(true);
       else if (k === "Escape") leave();
       else handled = false;
-    } else if (k === " " || (lower === "k" && !e.ctrlKey)) togglePause();
+    } else if (isLive && filmOnly) flash("Not available on live TV");
+    else if (k === " " || (lower === "k" && !e.ctrlKey)) togglePause();
     else if (lower === "f" && !e.ctrlKey) toggleFs();
     else if (k === "Escape") {
       if (menu || showKeys || showInfo || drawer) {
@@ -815,15 +850,19 @@ export function PlayerPage() {
     return (
       <div className="group fixed inset-0 select-none" onMouseMove={poke} onDoubleClick={toggleMini}>
         <div className={`absolute inset-0 flex items-center justify-center gap-3 bg-black/40 transition-opacity ${showControls ? "opacity-100" : "opacity-0"}`}>
-          <button className="rounded-full bg-black/60 p-3 hover:bg-white/20" onClick={() => seekBy(-10)} title="Back 10 seconds">
-            <RotateCcw size={22} />
-          </button>
+          {!isLive && (
+            <button className="rounded-full bg-black/60 p-3 hover:bg-white/20" onClick={() => seekBy(-10)} title="Back 10 seconds">
+              <RotateCcw size={22} />
+            </button>
+          )}
           <button className="rounded-full bg-white p-4 text-black" onClick={togglePause} title={paused ? "Play" : "Pause"}>
             {paused ? <Play size={26} fill="currentColor" /> : <Pause size={26} fill="currentColor" />}
           </button>
-          <button className="rounded-full bg-black/60 p-3 hover:bg-white/20" onClick={() => seekBy(10)} title="Forward 10 seconds">
-            <RotateCw size={22} />
-          </button>
+          {!isLive && (
+            <button className="rounded-full bg-black/60 p-3 hover:bg-white/20" onClick={() => seekBy(10)} title="Forward 10 seconds">
+              <RotateCw size={22} />
+            </button>
+          )}
           <button className="absolute right-2 top-2 rounded-full bg-black/60 p-2 hover:bg-white/20" onClick={toggleMini} title="Back to full player (Shift+M)">
             <Maximize size={18} />
           </button>
@@ -865,7 +904,7 @@ export function PlayerPage() {
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/20">
           <Loader2 size={64} className="animate-spin text-white/90" />
           <div className="rounded-full bg-black/60 px-4 py-1.5 text-sm text-white/85">
-            {phase === "resolving" ? "Finding the best quality…" : phase === "loading" ? "Starting video…" : `Buffering${bufPct != null ? ` ${bufPct}%` : "…"}${cacheSpeed > 0 ? ` · ${fmtBytes(cacheSpeed)}/s` : ""}`}
+            {phase !== "playing" && isLive ? "Tuning in…" : phase === "resolving" ? "Finding the best quality…" : phase === "loading" ? "Starting video…" : `Buffering${bufPct != null ? ` ${bufPct}%` : "…"}${cacheSpeed > 0 ? ` · ${fmtBytes(cacheSpeed)}/s` : ""}`}
           </div>
         </div>
       )}
@@ -899,7 +938,7 @@ export function PlayerPage() {
               <button onClick={leave} className="h-11 rounded-xl bg-white/10 px-5 font-semibold hover:bg-white/20">
                 Back
               </button>
-              {!session?.localPath && (
+              {!session?.localPath && !isLive && (
                 <button
                   onClick={() => {
                     attempt.current.triedAlt = false;
@@ -936,7 +975,7 @@ export function PlayerPage() {
       </div>
 
       {/* stall offer */}
-      {stallOffer && lowerQuality >= 0 && phase === "playing" && (
+      {stallOffer && lowerQuality >= 0 && phase === "playing" && !isLive && (
         <div className="fade-in absolute right-6 top-20 z-40 w-80 rounded-2xl border border-white/10 bg-black/90 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <p className="font-semibold">The video keeps stopping to load.</p>
           <p className="mt-1 text-sm text-white/60">A lower quality usually plays smoothly on a slow connection.</p>
@@ -1109,10 +1148,10 @@ export function PlayerPage() {
         </MenuPanel>
       )}
       {menu === "quality" && (
-        <MenuPanel title="Quality" onClose={() => setMenu(null)}>
+        <MenuPanel title={isLive ? "Links for this channel" : "Quality"} onClose={() => setMenu(null)}>
           {streams.map((s, i) => (
-            <MenuItem key={s.url + i} active={s === current} onClick={() => switchQuality(i)} sub={s.size ? fmtBytes(s.size) : s.source}>
-              {s.multi ? "Auto (best)" : s.label}
+            <MenuItem key={s.url + i} active={s === current} onClick={() => switchQuality(i)} sub={isLive ? (s.height ? s.label : undefined) : s.size ? fmtBytes(s.size) : s.source}>
+              {isLive ? `Link ${i + 1}` : s.multi ? "Auto (best)" : s.label}
             </MenuItem>
           ))}
         </MenuPanel>
@@ -1127,15 +1166,18 @@ export function PlayerPage() {
               {m} minutes
             </MenuItem>
           ))}
-          <MenuItem active={sleep?.kind === "episode"} onClick={() => { setSleep({ kind: "episode" }); flash("Stop at the end of this"); setMenu(null); }}>
-            End of this {isSeries ? "episode" : "movie"}
-          </MenuItem>
+          {!isLive && (
+            <MenuItem active={sleep?.kind === "episode"} onClick={() => { setSleep({ kind: "episode" }); flash("Stop at the end of this"); setMenu(null); }}>
+              End of this {isSeries ? "episode" : "movie"}
+            </MenuItem>
+          )}
         </MenuPanel>
       )}
 
       {/* bottom controls */}
       <div className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-6 pb-4 pt-16 transition-opacity duration-300 ${showControls ? "opacity-100" : "pointer-events-none opacity-0"}`} onClick={(e) => e.stopPropagation()}>
         {/* seek bar */}
+        {!isLive && (
         <div
           ref={seekRef}
           className="group/seek relative mb-3 flex h-5 cursor-pointer items-center"
@@ -1167,17 +1209,22 @@ export function PlayerPage() {
             </div>
           )}
         </div>
+        )}
 
         <div className="flex items-center gap-1">
           <button className="rounded-full p-2.5 hover:bg-white/15" onClick={togglePause} title={paused ? "Play (Space)" : "Pause (Space)"} aria-label={paused ? "Play" : "Pause"}>
             {paused ? <Play size={30} fill="currentColor" /> : <Pause size={30} fill="currentColor" />}
           </button>
-          <button className="rounded-full p-2.5 hover:bg-white/15" onClick={() => seekBy(-10)} title="Back 10 seconds (←)" aria-label="Back 10 seconds">
-            <RotateCcw size={24} />
-          </button>
-          <button className="rounded-full p-2.5 hover:bg-white/15" onClick={() => seekBy(10)} title="Forward 10 seconds (→)" aria-label="Forward 10 seconds">
-            <RotateCw size={24} />
-          </button>
+          {!isLive && (
+            <>
+              <button className="rounded-full p-2.5 hover:bg-white/15" onClick={() => seekBy(-10)} title="Back 10 seconds (←)" aria-label="Back 10 seconds">
+                <RotateCcw size={24} />
+              </button>
+              <button className="rounded-full p-2.5 hover:bg-white/15" onClick={() => seekBy(10)} title="Forward 10 seconds (→)" aria-label="Forward 10 seconds">
+                <RotateCw size={24} />
+              </button>
+            </>
+          )}
           {isSeries && (
             <>
               <button className="rounded-full p-2.5 hover:bg-white/15 disabled:opacity-30" disabled={!prev} onClick={() => goTo(prev, 0)} title="Previous episode (P)" aria-label="Previous episode">
@@ -1203,25 +1250,34 @@ export function PlayerPage() {
               style={{ ["--pct" as string]: `${((muted ? 0 : volume) / 150) * 100}%` }}
             />
           </div>
-          <button className="ml-2 rounded px-2 py-1 font-mono text-[15px] text-white/85 hover:bg-white/10" onClick={() => setRemaining((v) => !v)} title="Show time left / elapsed">
-            {remaining ? `−${fmtTime(duration - pos)}` : fmtTime(pos)} / {fmtTime(duration)}
-          </button>
+          {isLive ? (
+            <span className="ml-2 flex items-center gap-2 px-2 py-1 text-sm font-bold tracking-widest text-white/90">
+              <span className="h-2.5 w-2.5 rounded-full bg-brand" />
+              LIVE
+            </span>
+          ) : (
+            <button className="ml-2 rounded px-2 py-1 font-mono text-[15px] text-white/85 hover:bg-white/10" onClick={() => setRemaining((v) => !v)} title="Show time left / elapsed">
+              {remaining ? `−${fmtTime(duration - pos)}` : fmtTime(pos)} / {fmtTime(duration)}
+            </button>
+          )}
 
           <div className="flex-1" />
 
           {sleep && <span className="mr-1 flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-xs text-white/75"><Timer size={14} />{sleep.kind === "time" ? `${Math.max(0, Math.ceil((sleep.at - Date.now()) / 60000))} min` : "End"}</span>}
-          <button className={`rounded-full p-2.5 hover:bg-white/15 ${speed !== 1 ? "text-brand2" : ""}`} onClick={(e) => { e.stopPropagation(); setMenu(menu === "speed" ? null : "speed"); }} title="Playback speed ([ and ])" aria-label="Playback speed">
-            <span className="flex items-center gap-1"><Gauge size={22} />{speed !== 1 && <span className="text-sm font-bold">{speed}x</span>}</span>
-          </button>
+          {!isLive && (
+            <button className={`rounded-full p-2.5 hover:bg-white/15 ${speed !== 1 ? "text-brand2" : ""}`} onClick={(e) => { e.stopPropagation(); setMenu(menu === "speed" ? null : "speed"); }} title="Playback speed ([ and ])" aria-label="Playback speed">
+              <span className="flex items-center gap-1"><Gauge size={22} />{speed !== 1 && <span className="text-sm font-bold">{speed}x</span>}</span>
+            </button>
+          )}
           <button className="rounded-full p-2.5 hover:bg-white/15" onClick={(e) => { e.stopPropagation(); setMenu(menu === "subs" ? null : "subs"); }} title="Subtitles (C)" aria-label="Subtitles">
             <Captions size={24} />
           </button>
           <button className="rounded-full p-2.5 hover:bg-white/15" onClick={(e) => { e.stopPropagation(); setMenu(menu === "audio" ? null : "audio"); }} title="Audio and night mode (A)" aria-label="Audio">
             <AudioLines size={24} />
           </button>
-          {!session?.localPath && (
-            <button className="rounded-full p-2.5 hover:bg-white/15" onClick={(e) => { e.stopPropagation(); setMenu(menu === "quality" ? null : "quality"); }} title="Quality" aria-label="Quality">
-              <span className="flex items-center gap-1"><Settings2 size={22} /><span className="text-xs font-bold">{current?.multi ? "AUTO" : current?.label}</span></span>
+          {!session?.localPath && (!isLive || streams.length > 1) && (
+            <button className="rounded-full p-2.5 hover:bg-white/15" onClick={(e) => { e.stopPropagation(); setMenu(menu === "quality" ? null : "quality"); }} title={isLive ? "Other links for this channel" : "Quality"} aria-label={isLive ? "Other links for this channel" : "Quality"}>
+              <span className="flex items-center gap-1"><Settings2 size={22} /><span className="text-xs font-bold">{isLive ? `LINK ${Math.max(0, streams.indexOf(current as Stream)) + 1}` : current?.multi ? "AUTO" : current?.label}</span></span>
             </button>
           )}
           <button className={`rounded-full p-2.5 hover:bg-white/15 ${sleep ? "text-brand2" : ""}`} onClick={(e) => { e.stopPropagation(); setMenu(menu === "sleep" ? null : "sleep"); }} title="Sleep timer" aria-label="Sleep timer">

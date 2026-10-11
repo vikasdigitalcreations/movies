@@ -62,6 +62,7 @@ pub fn run() {
             commands::system::pin_verify,
             commands::system::pin_clear,
             commands::system::addon_set_locked,
+            commands::livetv::live_channels,
             commands::library::history_list,
             commands::library::history_get,
             commands::library::history_watched,

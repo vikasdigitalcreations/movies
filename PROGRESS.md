@@ -1,11 +1,15 @@
 # Progress — MovieBox
 
-Last updated: 2026-09-21
+Last updated: 2026-10-11
 
 ## Current status
 
 v1.3.2 is published (GitHub release, 2026-09-21), so copies on 1.2.0 update themselves on
 their next launch. v1.3.3 is built and installed on this PC, not yet published.
+
+1.3.3 also has **LiveTV** (added 2026-10-11): 1,249 free live channels merged from two
+public lists, in their own sidebar entry. 95% answered a link test; five of six played in
+the app, the sixth being a channel dead in both lists.
 
 1.3.3 adds YouTube's official film channels as a fifth source, starts Play sooner,
 asks the backup sources together, fixes a player deadlock after a resume, and adds the
@@ -56,6 +60,8 @@ adds Hindi dubs and classic Bollywood at up to 1080p.
 - **Verification** (2026-09-20, installed v1.2.0 over CDP, MovieBox dark): the update feed parses with no BOM and points at 1.2.0; `system_info` reports 1.2.0; `streams` returned four 4KHDHub releases in 10.6 s, best 2160p and downloadable; "Start over" played Inception at 2160p with the clock advancing 0:33 -> 0:48 over fifteen seconds; Back landed on the details page and stayed there, and a second Back left it.
 - **Verification** (2026-09-20, dev app over CDP, MovieBox dark): Rust tests 14/14 and `tsc` clean; `addons_list` returns Cinemeta through real IPC; six addon guard paths (bad URL, dead host, subtitles-only addon, duplicate, removing Cinemeta, no stream addon) each fail with their own message and persist nothing; `streams` returned three 4KHDHub releases in 10.7 s; the resolved URL answered HTTP 206 as `video/x-matroska`; Details -> Play played Inception at 2160p with the clock advancing 0:25 -> 0:37 over twelve seconds.
 
+- **LiveTV (1.3.3)** — `core/livetv.rs` reads the two lists, folds duplicate entries into one channel with its addresses as fallback links, and caches the lists for six hours; `src/pages/LiveTV.tsx` has category, language and name filters; the player hides everything that needs a timeline for a live channel. 10 unit tests.
+
 ## In progress
 
 - Nothing.
@@ -74,6 +80,9 @@ adds Hindi dubs and classic Bollywood at up to 1080p.
 5. Track upstream -- done by the auto-update workflow once it is switched on (item 1).
 
 ## Known issues / blockers
+
+- **LiveTV channels die without notice.** The lists are kept by volunteers. About 5% of channels answer on no link today, and a channel that answers can still be geo-blocked or show a frozen picture. The app cannot tell before it is opened; it tries each link, then says the channel is not answering.
+- LiveTV has no favourites, no programme guide and no way to add another list from the app yet.
 
 | Issue | Detail | Workaround |
 |---|---|---|

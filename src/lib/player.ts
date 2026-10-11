@@ -143,7 +143,7 @@ async function settle(maxMs = 8000) {
   }
 }
 
-export async function load(url: string, headers: [string, string][], start: number) {
+export async function load(url: string, headers: [string, string][], start: number, live = false) {
   await settle();
   const { ua, referer, fields } = headerOption(headers);
   // The CDN rejects browser-like user agents that lack browser headers (HTTP 428), so fall back to libmpv's own.
@@ -151,7 +151,9 @@ export async function load(url: string, headers: [string, string][], start: numb
   await setProperty("referrer", referer ?? "");
   await setProperty("http-header-fields", fields);
   await setProperty("pause", false);
-  const opts = start > 1 ? `start=${Math.floor(start)}` : "start=0";
+  // `start` is a seek. A live channel has nowhere to seek to and opens at the broadcast's
+  // newest point by itself, so it is given `none`, which means "do not seek at all".
+  const opts = live ? "start=none" : start > 1 ? `start=${Math.floor(start)}` : "start=0";
   await command("loadfile", [url, "replace", "-1", opts]);
 }
 

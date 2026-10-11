@@ -2,6 +2,21 @@
 
 Newest first. Dates are the day the work landed.
 
+## 2026-10-11 — 1.3.3 (LiveTV, still unpublished)
+
+### Added
+- **LiveTV**, a new sidebar entry after Anime (`core/livetv.rs`, `commands/livetv.rs`, `src/pages/LiveTV.tsx`). Free live channels read from two public M3U lists: iptv-org's India list and akumar36/freeiptv's India list. Their 1,948 entries fold into **1,249 channels**: entries for one channel (the same name once resolution notes, `[Geo-blocked]`-style tags, a trailing HD/SD and "(India)" are taken off) become one tile, a repeated address adds nothing, and the different addresses a channel came with are kept as its links, best first, up to five. 169 channels have a spare link. The page has category chips, a language filter (the second list is the only one that says the language, and a repeated address still passes it on), a name search, and remembers all of it across a trip to the player.
+- **The player knows a live channel.** No seek bar, skip buttons, speed, resume or history entry; a LIVE badge instead of the clock; a dead link moves to the channel's next one after 20 s instead of 60; a channel that stops mid-broadcast is reconnected up to three times; and a channel's name is never sent to the film sources as a title. Live channels load with `start=none`, so no seek is issued on something that cannot seek.
+- `live_channels(refresh?)`. The lists are saved under `%APPDATA%\MovieBox\livetv`, reused for six hours, and an older copy stands in when a download fails. Settings -> Clear cache drops them.
+- `probe livetv`, `probe livetv dump`, `probe livetv check [n] [user agent]`.
+
+### Measured
+- `probe livetv check` over all 1,249 channels: **1,157 answer on their first link and 1,188 on some link** (95%). The spare links rescue 31. The user agent made no difference (libmpv 1,187, VLC 1,189). "Answers" means the server returned a playlist or media, not that the picture was watched.
+- In the app: Aaj Tak, DD National, Zee News, 9XM and NDTV 24x7 played (two of them on their second link); DD National read 1920x1080 with the clock advancing second for second; Disney Channel, dead in both lists, showed the "isn't answering" message after 20 s.
+
+### Changed
+- Live TV is no longer a non-goal (MASTERPLAN.md). The vendored `M3UParser` is not used: it drops the language tag and the per-channel `#EXTVLCOPT` headers both lists rely on.
+
 ## 2026-09-21 — 1.3.3
 
 ### Fixed

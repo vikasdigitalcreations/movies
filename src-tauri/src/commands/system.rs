@@ -125,6 +125,7 @@ pub async fn open_logs(app: tauri::AppHandle) -> CmdResult<()> {
 pub async fn clear_cache(state: State<'_, AppState>) -> CmdResult<()> {
     state.home_cache.lock().await.clear();
     state.details_cache.lock().await.clear();
+    crate::core::livetv::forget().await;
     let dir = moviebox_tui::config::cache_dir();
     if dir.exists() {
         let _ = tokio::fs::remove_dir_all(&dir).await;

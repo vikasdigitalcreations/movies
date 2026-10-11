@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Home, Search, Film, Tv, Sparkles, Bookmark, History, Download, Settings, HelpCircle, Clapperboard, Lock } from "lucide-react";
+import { Home, Search, Film, Tv, Sparkles, Bookmark, History, Download, Settings, HelpCircle, Clapperboard, Lock, Radio } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../store/app";
 
@@ -10,6 +10,7 @@ const items = [
   { to: "/movies", label: "Movies", icon: Film },
   { to: "/series", label: "Series", icon: Tv },
   { to: "/anime", label: "Anime", icon: Sparkles },
+  { to: "/live", label: "LiveTV", icon: Radio },
   { to: "/mylist", label: "My List", icon: Bookmark },
   { to: "/continue", label: "Continue Watching", icon: History },
   { to: "/downloads", label: "Downloads", icon: Download, badge: true },
